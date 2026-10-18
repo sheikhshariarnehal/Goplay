@@ -131,14 +131,31 @@ final eventsProvider = FutureProvider<List<SportEvent>>((ref) async {
 
 final liveEventsProvider = FutureProvider<List<SportEvent>>((ref) async {
   final events = await ref.watch(eventsProvider.future);
-  final list = events.where((e) => e.isLive && e.channels.isNotEmpty).toList();
-  list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  final list = events.where((e) {
+    if (!e.isLive || e.isEnded) return false;
+    return e.channels.isNotEmpty || (e.links != null && e.links!.isNotEmpty);
+  }).toList();
+
+  // PlayZ TV live sorting architecture:
+  // 1. Priority descending (higher priority first)
+  // 2. HOT/Featured matches next
+  // 3. Earliest start time
+  list.sort((a, b) {
+    final priorityCmp = b.sortOrder.compareTo(a.sortOrder);
+    if (priorityCmp != 0) return priorityCmp;
+
+    if (a.isFeatured != b.isFeatured) {
+      return b.isFeatured ? 1 : -1;
+    }
+
+    return a.startTime.compareTo(b.startTime);
+  });
   return list;
 });
 
 final upcomingEventsProvider = FutureProvider<List<SportEvent>>((ref) async {
   final events = await ref.watch(eventsProvider.future);
-  final list = events.where((e) => e.isUpcoming).toList();
+  final list = events.where((e) => e.isUpcoming && !e.isEnded).toList();
   list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
   return list;
 });
@@ -146,24 +163,48 @@ final upcomingEventsProvider = FutureProvider<List<SportEvent>>((ref) async {
 final featuredEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
   final eventsState = ref.watch(eventsProvider);
   return eventsState.whenData(
-    (events) => events.where((e) => e.isFeatured).toList(),
+    (events) => events.where((e) => e.isFeatured && !e.isEnded).toList(),
   );
 });
 
 final todayEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
   final eventsState = ref.watch(eventsProvider);
   return eventsState.whenData((events) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    return events.where((e) {
-      final localStart = e.startTime.toLocal();
-      final isToday = localStart.year == today.year &&
-          localStart.month == today.month &&
-          localStart.day == today.day;
-      // Filter out any live event that does not have active channels added
-      if (e.isLive && e.channels.isEmpty) return false;
-      return isToday;
+    final list = events.where((e) {
+      if (e.isEnded) return false;
+      if (e.isLive && e.channels.isEmpty && (e.links == null || e.links!.isEmpty)) {
+        return false;
+      }
+      return e.isLive || e.lifecycleStatus == EventLifecycleStatus.todays;
     }).toList();
+
+    // Sort: Live fixtures first, then by priority/sortOrder
+    list.sort((a, b) {
+      if (a.isLive && !b.isLive) return -1;
+      if (!a.isLive && b.isLive) return 1;
+      return a.sortOrder.compareTo(b.sortOrder);
+    });
+    return list;
+  });
+});
+
+final tomorrowEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
+  final eventsState = ref.watch(eventsProvider);
+  return eventsState.whenData((events) {
+    final list = events
+        .where((e) => e.lifecycleStatus == EventLifecycleStatus.tomorrow && !e.isEnded)
+        .toList();
+    list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return list;
+  });
+});
+
+final endedEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
+  final eventsState = ref.watch(eventsProvider);
+  return eventsState.whenData((events) {
+    final list = events.where((e) => e.isEnded).toList();
+    list.sort((a, b) => b.startTime.compareTo(a.startTime));
+    return list;
   });
 });
 
@@ -202,11 +243,58 @@ final sortedSportCategoriesProvider = Provider<AsyncValue<List<String>>>((ref) {
   });
 });
 
-// ─── Filtered Today Events by Sport (cached per sport key) ────────────
+// ─── Filtered Events by Sport across all tabs ────────────────────────
+final filteredLiveEventsProvider =
+    Provider.family<AsyncValue<List<SportEvent>>, String>((ref, sport) {
+  final liveAsync = ref.watch(liveEventsProvider);
+  return liveAsync.whenData((allEvents) {
+    if (sport.toLowerCase() == 'all') return allEvents;
+    return allEvents
+        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .toList();
+  });
+});
+
 final filteredTodayEventsProvider =
     Provider.family<AsyncValue<List<SportEvent>>, String>((ref, sport) {
   final todayState = ref.watch(todayEventsProvider);
   return todayState.whenData((allEvents) {
+    if (sport.toLowerCase() == 'all') return allEvents;
+    return allEvents
+        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .toList();
+  });
+});
+
+final filteredTomorrowEventsProvider =
+    Provider<AsyncValue<List<SportEvent>>>((ref) {
+  final sport = ref.watch(selectedSportFilterProvider);
+  final tomorrowState = ref.watch(tomorrowEventsProvider);
+  return tomorrowState.whenData((allEvents) {
+    if (sport.toLowerCase() == 'all') return allEvents;
+    return allEvents
+        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .toList();
+  });
+});
+
+final filteredUpcomingEventsProvider =
+    Provider<AsyncValue<List<SportEvent>>>((ref) {
+  final sport = ref.watch(selectedSportFilterProvider);
+  final upcomingAsync = ref.watch(upcomingEventsProvider);
+  return upcomingAsync.whenData((allEvents) {
+    if (sport.toLowerCase() == 'all') return allEvents;
+    return allEvents
+        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .toList();
+  });
+});
+
+final filteredEndedEventsProvider =
+    Provider<AsyncValue<List<SportEvent>>>((ref) {
+  final sport = ref.watch(selectedSportFilterProvider);
+  final endedState = ref.watch(endedEventsProvider);
+  return endedState.whenData((allEvents) {
     if (sport.toLowerCase() == 'all') return allEvents;
     return allEvents
         .where((e) => e.sport.toLowerCase() == sport.toLowerCase())

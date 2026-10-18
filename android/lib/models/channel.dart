@@ -1,5 +1,6 @@
 import 'drm_config.dart';
 import '../utils/channel_name.dart';
+import '../services/stream_decryptor.dart';
 
 /// Data model for a TV channel
 class Channel {
@@ -87,6 +88,14 @@ class Channel {
     // nameless card, so normalise it at the boundary.
     final rawName = (json['name'] as String?)?.trim() ?? '';
     final rawQuality = (json['quality'] as String?)?.trim();
+    final rawStreamUrl = json['stream_url'] as String? ?? '';
+    final parsed = StreamDecryptor.parseStreamUrl(rawStreamUrl);
+    final combinedHeaders = json['headers'] is Map
+        ? Map<String, dynamic>.from(json['headers'] as Map)
+        : <String, dynamic>{};
+    if (parsed.headers.isNotEmpty) {
+      combinedHeaders.addAll(parsed.headers);
+    }
 
     return Channel(
       id: json['id'] as String,
@@ -98,10 +107,8 @@ class Channel {
       isLive: json['is_live'] as bool? ?? true,
       isTrending: json['is_trending'] as bool? ?? false,
       quality: (rawQuality == null || rawQuality.isEmpty) ? 'HD' : rawQuality,
-      streamUrl: json['stream_url'] as String? ?? '',
-      headers: json['headers'] is Map
-          ? Map<String, dynamic>.from(json['headers'] as Map)
-          : {},
+      streamUrl: parsed.url,
+      headers: combinedHeaders,
       sortOrder: json['sort_order'] as int? ?? 0,
       addedAt: json['added_at'] != null
           ? DateTime.tryParse(json['added_at'] as String)

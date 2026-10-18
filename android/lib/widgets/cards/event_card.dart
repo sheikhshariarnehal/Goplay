@@ -83,13 +83,13 @@ const _kTeamNameStyle = TextStyle(
 );
 
 // The countdown is supporting information, not the headline. At w800 in full
-// Signal Teal it read as loud as the kickoff time directly above it, so the
+// Volt it read as loud as the kickoff time directly above it, so the
 // pair had no hierarchy — two strong lines competing in a 3-line column. Medium
-// weight in a dimmed teal keeps the "this is a clock, it is teal, it is
+// weight in a dimmed volt keeps the "this is a clock, it is volt, it is
 // counting" signal while stepping clearly behind the time.
 const _kCountdownStyle = TextStyle(
   fontFamily: GoPlayType.family,
-  color: Color(0xB300ADB5), // Signal Teal @ 70%
+  color: Color(0xB3C8FF00), // Volt @ 70%
   fontSize: GoPlayType.xs,
   fontWeight: FontWeight.w600,
   height: GoPlayType.leadingFlat,
@@ -174,8 +174,8 @@ class EventCard extends ConsumerWidget {
     final teams =
         _kTileFlagSize + _kTileFlagGap + (metaLine * _kTileNameLines);
 
-    // +1 absorbs sub-pixel rounding so the column can never overflow by a hair.
-    return (_kTilePadV * 2) + header + _kTileHeaderGap + teams + 1;
+    // +6 absorbs sub-pixel font ascent/descent rounding so the column can never overflow.
+    return (_kTilePadV * 2) + header + _kTileHeaderGap + teams + 6;
   }
 
   /// [tileHeight] plus the gap beneath it — the value a `SliverFixedExtentList`

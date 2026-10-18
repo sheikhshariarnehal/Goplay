@@ -9,12 +9,16 @@ class TeamFlagWidget extends StatelessWidget {
   final String? flag;
   final double size;
   final String fallbackEmoji;
+  final BoxFit fit;
+  final bool showBorder;
 
   const TeamFlagWidget({
     super.key,
     required this.flag,
     this.size = 22,
     this.fallbackEmoji = '🏳️',
+    this.fit = BoxFit.cover,
+    this.showBorder = true,
   });
 
   String? _emojiToCountryCode(String emoji) {
@@ -49,12 +53,14 @@ class TeamFlagWidget extends StatelessWidget {
           height: size * 1.2,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withAlpha(25), width: 0.5),
+            border: showBorder
+                ? Border.all(color: Colors.white.withAlpha(25), width: 0.5)
+                : null,
           ),
           child: ClipOval(
             child: CachedNetworkImage(
               imageUrl: trimmed,
-              fit: BoxFit.cover,
+              fit: fit,
               // Cap decode size to 96 px (covers up to 40 dp at 3× DPR).
               memCacheWidth: 96,
               memCacheHeight: 96,
@@ -81,12 +87,14 @@ class TeamFlagWidget extends StatelessWidget {
           height: size * 1.2,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withAlpha(25), width: 0.5),
+            border: showBorder
+                ? Border.all(color: Colors.white.withAlpha(25), width: 0.5)
+                : null,
           ),
           child: ClipOval(
             child: CachedNetworkImage(
               imageUrl: pngUrl,
-              fit: BoxFit.cover,
+              fit: fit,
               memCacheWidth: 80,
               memCacheHeight: 80,
               fadeInDuration: const Duration(milliseconds: 100),
@@ -105,13 +113,16 @@ class TeamFlagWidget extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white.withAlpha(20),
+        border: showBorder
+            ? Border.all(color: Colors.white.withAlpha(25), width: 0.5)
+            : null,
       ),
       child: ClipOval(
         child: SizedBox.expand(
           child: Transform.scale(
             scale: 1.35,
             child: FittedBox(
-              fit: BoxFit.cover,
+              fit: fit,
               child: Text(
                 trimmed,
               ),
@@ -129,6 +140,9 @@ class TeamFlagWidget extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white.withAlpha(20),
+        border: showBorder
+            ? Border.all(color: Colors.white.withAlpha(25), width: 0.5)
+            : null,
       ),
       child: Center(
         child: Text(

@@ -38,7 +38,7 @@ const _kTileDecoActive = BoxDecoration(
     BorderSide(color: GoPlayTheme.primary, width: 1.0),
   ),
   boxShadow: [
-    BoxShadow(color: Color(0x1F00ADB5), blurRadius: 8, offset: Offset(0, 2)),
+    BoxShadow(color: Color(0x33C8FF00), blurRadius: 8, offset: Offset(0, 2)),
   ],
 );
 // Tile decorations — hovered / normal
@@ -59,10 +59,10 @@ const _kTileDecoNormal = BoxDecoration(
 
 // Playing tag
 const _kPlayingTagDeco = BoxDecoration(
-  color: Color(0x1A00ADB5),
+  color: Color(0x26C8FF00),
   borderRadius: BorderRadius.all(Radius.circular(12)),
   border: Border.fromBorderSide(
-    BorderSide(color: Color(0x3200ADB5), width: 0.5),
+    BorderSide(color: Color(0x59C8FF00), width: 0.5),
   ),
 );
 const _kPlayingTagStyle = TextStyle(
@@ -78,8 +78,8 @@ const _kPlayingTagStyle = TextStyle(
 final _kChipDecoActive = BoxDecoration(
   gradient: const LinearGradient(
     colors: [
-      Color(0xFF00E5EE), // Bright cyan/teal gloss top
-      Color(0xFF00ADB5), // Brand teal base
+      Color(0xFFE2FF4D), // Volt highlight gloss top
+      Color(0xFFC8FF00), // Primary volt base
     ],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
@@ -181,6 +181,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   /// set of channels must pass that set here, or the user will be dropped into
   /// the whole category on the first channel switch.
   final List<String>? eventChannels;
+  final List<Channel>? dynamicChannels;
 
   final bool forceFullscreen;
 
@@ -188,6 +189,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     super.key,
     required this.channelId,
     this.eventChannels,
+    this.dynamicChannels,
     this.forceFullscreen = false,
   });
 
@@ -453,7 +455,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             decoration: _kScreenBg,
           child: channelsAsync.when(
             data: (channels) {
-              final channel = channels.cast<Channel?>().firstWhere(
+              final allChannels = [
+                ...channels,
+                if (widget.dynamicChannels != null) ...widget.dynamicChannels!,
+              ];
+
+              final channel = allChannels.cast<Channel?>().firstWhere(
                 (c) => c?.id == _currentChannelId,
                 orElse: () => null,
               );
@@ -473,12 +480,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               final relatedChannels = widget.eventChannels != null
                   ? widget.eventChannels!
                         .map((id) {
-                          final match = channels.where((c) => c.id == id);
+                          final match = allChannels.where((c) => c.id == id);
                           return match.isNotEmpty ? match.first : null;
                         })
                         .whereType<Channel>()
                         .toList()
-                  : channels
+                  : allChannels
                         .where((c) => c.category == channel.category)
                         .toList();
 
@@ -526,6 +533,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                         onTap: _onPlayerTap,
                         onFullscreenToggle: _toggleFullscreen,
                         showBackButton: true,
+                        topBar: (widget.eventChannels != null && widget.eventChannels!.length > 1)
+                            ? _FullscreenTopBar(
+                                category: channel.category ?? '',
+                                currentChannelId: channel.id,
+                                isFullscreen: false,
+                                onBackPressed: () => Navigator.of(context).pop(),
+                                onChannelSelected: (id) {
+                                  setState(() => _currentChannelId = id);
+                                  _startControlsTimer();
+                                },
+                                eventChannels: widget.eventChannels,
+                                dynamicChannels: widget.dynamicChannels,
+                                onFocusDown: () {
+                                  _playPauseFocusNode.requestFocus();
+                                },
+                                onInteract: _onPlayerInteract,
+                              )
+                            : null,
                         onPreviousChannel: onPrev,
                         onNextChannel: onNext,
                         onInteract: _onPlayerInteract,
@@ -590,6 +615,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                         if (isTv) _focusPlayer();
                                       },
                                       eventChannels: widget.eventChannels,
+                                      dynamicChannels: widget.dynamicChannels,
                                       panelHasFocus: _channelPanelHasFocus && isTv,
                                     ),
                                   ),
@@ -634,6 +660,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                       onChannelSelected: (id) =>
                                           setState(() => _currentChannelId = id),
                                       eventChannels: widget.eventChannels,
+                                      dynamicChannels: widget.dynamicChannels,
                                     ),
                                   ),
                                 ],
@@ -662,20 +689,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       onNextChannel: onNext,
                       onInteract: _onPlayerInteract,
                       height: responsivePlayerHeight,
-                      topBar: isFullscreen
+                      topBar: (isFullscreen || (widget.eventChannels != null && widget.eventChannels!.length > 1))
                           ? _FullscreenTopBar(
                               category: channel.category ?? '',
                               currentChannelId: channel.id,
-                              onBackPressed: widget.forceFullscreen
+                              isFullscreen: isFullscreen,
+                              onBackPressed: (widget.forceFullscreen || !isFullscreen)
                                   ? () => Navigator.of(context).pop()
                                   : _toggleFullscreen,
                               onChannelSelected: (id) {
                                 setState(() => _currentChannelId = id);
                                 _startControlsTimer();
-                                // didUpdateWidget in ChannelVideoPlayer will
-                                // auto-focus play/pause after channel change.
                               },
                               eventChannels: widget.eventChannels,
+                              dynamicChannels: widget.dynamicChannels,
                               onFocusDown: () {
                                 _playPauseFocusNode.requestFocus();
                               },
@@ -775,7 +802,7 @@ class _PlayerContainer extends StatelessWidget {
             ),
 
             // Back button
-            if (showBackButton)
+            if (showBackButton && topBar == null)
               Positioned(
                 top: 16,
                 left: 16,
@@ -935,6 +962,7 @@ class _RelatedChannelsList extends ConsumerStatefulWidget {
   final bool isScrollable;
   final Function(String) onChannelSelected;
   final List<String>? eventChannels;
+  final List<Channel>? dynamicChannels;
   /// When true (TV + panel has focus), the current playing or last-focused channel item gets autofocus
   final bool panelHasFocus;
 
@@ -945,6 +973,7 @@ class _RelatedChannelsList extends ConsumerStatefulWidget {
     required this.isScrollable,
     required this.onChannelSelected,
     this.eventChannels,
+    this.dynamicChannels,
     this.panelHasFocus = false,
   });
 
@@ -961,17 +990,21 @@ class _RelatedChannelsListState extends ConsumerState<_RelatedChannelsList> {
 
     return channelsAsync.when(
       data: (channels) {
+        final allChannels = [
+          ...channels,
+          if (widget.dynamicChannels != null) ...widget.dynamicChannels!,
+        ];
         final List<Channel> related;
         if (widget.eventChannels != null) {
           related = widget.eventChannels!
               .map((id) {
-                final match = channels.where((c) => c.id == id);
+                final match = allChannels.where((c) => c.id == id);
                 return match.isNotEmpty ? match.first : null;
               })
               .whereType<Channel>()
               .toList();
         } else {
-          related = channels.where((c) => c.category == widget.category).toList();
+          related = allChannels.where((c) => c.category == widget.category).toList();
         }
 
         if (related.isEmpty) {
@@ -1233,6 +1266,8 @@ class _FullscreenTopBar extends ConsumerWidget {
   final VoidCallback onBackPressed;
   final Function(String) onChannelSelected;
   final List<String>? eventChannels;
+  final List<Channel>? dynamicChannels;
+  final bool isFullscreen;
   /// Called when D-Pad Down is pressed in the top bar, allowing the parent
   /// to move focus explicitly to the center player controls.
   final VoidCallback? onFocusDown;
@@ -1244,6 +1279,8 @@ class _FullscreenTopBar extends ConsumerWidget {
     required this.onBackPressed,
     required this.onChannelSelected,
     this.eventChannels,
+    this.dynamicChannels,
+    this.isFullscreen = true,
     this.onFocusDown,
     this.onInteract,
   });
@@ -1255,14 +1292,17 @@ class _FullscreenTopBar extends ConsumerWidget {
     final bar = DecoratedBox(
       decoration: _kTopBarGradient,
       child: SafeArea(
-        top: true,
+        top: isFullscreen,
         bottom: false,
         left: false,
         right: true,
         child: Padding(
-          padding: const EdgeInsets.only(top: 10.0, bottom: 6.0),
+          padding: EdgeInsets.only(
+            top: isFullscreen ? 10.0 : 4.0,
+            bottom: isFullscreen ? 6.0 : 4.0,
+          ),
           child: SizedBox(
-            height: 52,
+            height: isFullscreen ? 52 : 46,
             child: Row(
               children: [
                 // 1. Back button
@@ -1283,17 +1323,21 @@ class _FullscreenTopBar extends ConsumerWidget {
                 Expanded(
                   child: channelsAsync.when(
                     data: (channels) {
+                      final allChannels = [
+                        ...channels,
+                        if (dynamicChannels != null) ...dynamicChannels!,
+                      ];
                       final List<Channel> related;
                       if (eventChannels != null) {
                         related = eventChannels!
                             .map((id) {
-                              final match = channels.where((c) => c.id == id);
+                              final match = allChannels.where((c) => c.id == id);
                               return match.isNotEmpty ? match.first : null;
                             })
                             .whereType<Channel>()
                             .toList();
                       } else {
-                        related = channels
+                        related = allChannels
                             .where((c) => c.category == category)
                             .toList();
                       }

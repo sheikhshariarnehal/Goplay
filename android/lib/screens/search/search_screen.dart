@@ -2,19 +2,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
 import '../../core/typography.dart';
 import '../../providers/app_providers.dart';
 import '../../models/channel.dart';
 import '../../models/event.dart';
-import '../../widgets/team_flag.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../../widgets/cards/playz_event_card.dart';
 
 /// Opens [ch] in the player scoped to [scope] — the list the user tapped it in.
-///
-/// Without the scope the player falls back to "every channel in this channel's
-/// category", so tapping a search result would drop the user into the whole
-/// category on the first channel switch instead of walking their results.
 void _openPlayer(BuildContext context, Channel ch, List<Channel> scope) {
   if (scope.length < 2) {
     context.push('/player/${ch.id}');
@@ -67,10 +63,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     setState(() {
       _query = queryText;
       _controller.text = queryText;
-      // Place cursor at the end of the text
       _controller.selection = TextSelection.fromPosition(
         TextPosition(offset: queryText.length),
       );
+    });
+  }
+
+  void _clearSearch() {
+    _controller.clear();
+    _debounce?.cancel();
+    setState(() {
+      _query = '';
     });
   }
 
@@ -83,14 +86,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Highly polished, glossy iOS-like search bar
+            // YouTube-style sleek search bar
             Container(
-              padding: const EdgeInsets.fromLTRB(8, 8, 16, 16),
-              decoration: BoxDecoration(
-                color: GoPlayTheme.surface.withValues(alpha: 0.8),
+              padding: const EdgeInsets.fromLTRB(4, 8, 16, 12),
+              decoration: const BoxDecoration(
+                color: GoPlayTheme.surface,
                 border: Border(
                   bottom: BorderSide(
-                    color: GoPlayTheme.cardBorder.withValues(alpha: 0.15),
+                    color: Color(0x1AFFFFFF),
                     width: 0.8,
                   ),
                 ),
@@ -99,78 +102,63 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
+                      Icons.arrow_back_rounded,
                       color: GoPlayTheme.onSurface,
-                      size: 20,
+                      size: 24,
                     ),
+                    tooltip: 'Back',
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   Expanded(
-                    child: Theme(
-                      data: Theme.of(context).copyWith(
-                        inputDecorationTheme: const InputDecorationTheme(
-                          filled: true,
-                          fillColor: Color(0xFF272727),
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(100)),
-                            borderSide: BorderSide.none,
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(100)),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(100)),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
+                    child: Container(
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: GoPlayTheme.surfaceContainer,
+                        borderRadius: BorderRadius.circular(24),
                       ),
-                      child: SizedBox(
-                        height: 44,
-                        child: TextField(
-                          controller: _controller,
-                          autofocus: true,
-                          onChanged: (value) {
-                            if (_debounce?.isActive ?? false) _debounce!.cancel();
-                            _debounce = Timer(const Duration(milliseconds: 250), () {
-                              setState(() {
-                                _query = value;
-                              });
+                      child: TextField(
+                        controller: _controller,
+                        autofocus: true,
+                        cursorColor: GoPlayTheme.primary,
+                        style: GoPlayType.body.copyWith(
+                          color: GoPlayTheme.onSurface,
+                          fontSize: 15,
+                        ),
+                        onChanged: (value) {
+                          if (_debounce?.isActive ?? false) _debounce!.cancel();
+                          _debounce = Timer(const Duration(milliseconds: 200), () {
+                            setState(() {
+                              _query = value.trim();
                             });
-                          },
-                          cursorColor: GoPlayTheme.onSurface,
-                          style: GoPlayType.body.copyWith(
-                            color: GoPlayTheme.onSurface,
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Search channels, matches, sports...',
+                          hintStyle: GoPlayType.body.copyWith(
+                            color: GoPlayTheme.onSurfaceVariant,
+                            fontSize: 15,
                           ),
-                          decoration: InputDecoration(
-                            hintText: 'Search channels, teams, sports...',
-                            hintStyle: GoPlayType.body.copyWith(
-                              color: GoPlayTheme.onSurfaceMuted,
-                            ),
-                            isDense: true,
-                            prefixIcon: const Icon(
-                              Icons.search_rounded,
-                              color: Colors.white70,
-                              size: 20,
-                            ),
-                            suffixIcon: _showCloseButton
-                                ? IconButton(
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      color: Colors.white70,
-                                      size: 18,
-                                    ),
-                                    onPressed: () {
-                                      _controller.clear();
-                                      _debounce?.cancel();
-                                      setState(() {
-                                        _query = '';
-                                      });
-                                    },
-                                  )
-                                : null,
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 11,
+                            horizontal: 16,
                           ),
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: GoPlayTheme.onSurfaceVariant,
+                            size: 20,
+                          ),
+                          suffixIcon: _showCloseButton
+                              ? IconButton(
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    color: GoPlayTheme.onSurfaceVariant,
+                                    size: 20,
+                                  ),
+                                  onPressed: _clearSearch,
+                                )
+                              : null,
                         ),
                       ),
                     ),
@@ -179,7 +167,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ),
             ),
 
-            // Results / Empty State
+            // Main Content: Empty State (Discovery) or Live Search Results
             Expanded(
               child: _query.isEmpty
                   ? _EmptySearchState(
@@ -188,6 +176,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     )
                   : _SearchResults(
                       query: _query,
+                      onClear: _clearSearch,
                     ),
             ),
           ],
@@ -197,9 +186,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 }
 
+// ─── Discovery State (Empty Query) ───────────────────────────
 class _EmptySearchState extends StatelessWidget {
   final AsyncValue<List<Channel>> channelsAsync;
-  final Function(String) onTagSelect;
+  final ValueChanged<String> onTagSelect;
 
   const _EmptySearchState({
     required this.channelsAsync,
@@ -215,42 +205,50 @@ class _EmptySearchState extends StatelessWidget {
       (label: '🍿 Movies', query: 'Movies'),
       (label: '📺 Sports', query: 'Sports'),
       (label: '🌐 News', query: 'News'),
+      (label: '🎬 Entertainment', query: 'Entertainment'),
+      (label: '🎵 Music', query: 'Music'),
     ];
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
       physics: const BouncingScrollPhysics(),
       children: [
-        // Section: Popular Tags
+        // Section 1: Popular Searches
         Text(
-          'POPULAR SEARCHES',
-          style: GoPlayType.meta.copyWith(
-            color: GoPlayTheme.onSurfaceMuted,
-            letterSpacing: GoPlayType.trackingWide,
+          'Popular Searches',
+          style: GoPlayType.sectionTitle.copyWith(
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+            color: GoPlayTheme.onSurface,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         Wrap(
           spacing: 8,
           runSpacing: 10,
           children: popularTags.map((tag) {
-            return GestureDetector(
+            return InkWell(
               onTap: () => onTagSelect(tag.query),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              borderRadius: BorderRadius.circular(8),
+              child: Ink(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(
-                  color: GoPlayTheme.surfaceContainerHigh.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(12),
+                  color: GoPlayTheme.surfaceContainer,
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    width: 1,
+                    color: const Color(0x14FFFFFF),
+                    width: 0.6,
                   ),
                 ),
                 child: Text(
                   tag.label,
-                  style: GoPlayType.label.copyWith(color: GoPlayTheme.onSurface),
+                  style: GoPlayType.label.copyWith(
+                    color: GoPlayTheme.onSurface,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -258,51 +256,50 @@ class _EmptySearchState extends StatelessWidget {
             );
           }).toList(),
         ),
-        const SizedBox(height: 36),
+        const SizedBox(height: 32),
 
-        // Section: Recommendations
+        // Section 2: Recommended Channels
         Text(
-          'RECOMMENDED CHANNELS',
-          style: GoPlayType.meta.copyWith(
-            color: GoPlayTheme.onSurfaceMuted,
-            letterSpacing: GoPlayType.trackingWide,
+          'Recommended Channels',
+          style: GoPlayType.sectionTitle.copyWith(
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+            color: GoPlayTheme.onSurface,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         channelsAsync.when(
           data: (channels) {
-            final liveList = channels.where((ch) => ch.isLive).take(4).toList();
-            if (liveList.isEmpty) {
-              final fallbacks = channels.take(4).toList();
-              if (fallbacks.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    'No channels available right now.',
-                    style: GoPlayType.body.copyWith(
-                      color: GoPlayTheme.onSurfaceVariant,
-                    ),
+            final liveList = channels.where((ch) => ch.isLive).take(6).toList();
+            final displayList = liveList.isNotEmpty ? liveList : channels.take(6).toList();
+
+            if (displayList.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  'No channels available right now.',
+                  style: GoPlayType.body.copyWith(
+                    color: GoPlayTheme.onSurfaceVariant,
                   ),
-                );
-              }
-              return Column(
-                children: fallbacks
-                    .map((ch) => buildRecommendationCard(context, ch, scope: fallbacks))
-                    .toList(),
+                ),
               );
             }
+
             return Column(
-              children: liveList
-                  .map((ch) => buildRecommendationCard(context, ch, scope: liveList))
+              children: displayList
+                  .map((ch) => _buildChannelTile(context, ch, scope: displayList))
                   .toList(),
             );
           },
           loading: () => const Center(
             child: Padding(
               padding: EdgeInsets.all(24.0),
-              child: CircularProgressIndicator(color: GoPlayTheme.primary),
+              child: CircularProgressIndicator(
+                color: GoPlayTheme.primary,
+                strokeWidth: 2.5,
+              ),
             ),
           ),
           error: (err, stack) => const SizedBox.shrink(),
@@ -311,147 +308,81 @@ class _EmptySearchState extends StatelessWidget {
     );
   }
 
-  Widget buildRecommendationCard(
+  Widget _buildChannelTile(
     BuildContext context,
     Channel ch, {
     required List<Channel> scope,
   }) {
-    return GestureDetector(
-      onTap: () => _openPlayer(context, ch, scope),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: GoPlayTheme.surfaceContainer.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.04),
-            width: 1,
-          ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: GoPlayTheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0x14FFFFFF),
+          width: 0.6,
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: GoPlayTheme.surfaceContainerHigh,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  width: 1,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _openPlayer(context, ch, scope),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                _ChannelAvatar(ch: ch),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ch.displayName,
+                        style: GoPlayType.label.copyWith(
+                          color: GoPlayTheme.onSurface,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${ch.category ?? 'General'} • ${ch.country ?? 'Global'}',
+                        style: GoPlayType.bodySmall.copyWith(
+                          color: GoPlayTheme.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              child: ch.logo != null && ch.logo!.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: ch.logo!,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 88,
-                      memCacheHeight: 88,
-                      imageBuilder: (context, imageProvider) => Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          image: DecorationImage(
-                            image: imageProvider,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                      placeholder: (context, url) => Center(
-                        child: Text(
-                          ch.initials,
-                          style: GoPlayType.labelSmall.copyWith(
-                            color: GoPlayTheme.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      errorWidget: (context, url, error) => Center(
-                        child: Text(
-                          ch.initials,
-                          style: GoPlayType.labelSmall.copyWith(
-                            color: GoPlayTheme.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    )
-                  : Center(
-                      child: Text(
-                        ch.initials,
-                        style: GoPlayType.labelSmall.copyWith(
-                          color: GoPlayTheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
+                if (ch.isLive) const _LiveBadge(),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ch.displayName,
-                    style: GoPlayType.label.copyWith(color: GoPlayTheme.onSurface),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${ch.category ?? 'General'} â€¢ ${ch.country ?? 'Global'}',
-                    style: GoPlayType.bodySmall.copyWith(color: GoPlayTheme.onSurfaceVariant),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            if (ch.isLive)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: GoPlayTheme.liveBadge.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: GoPlayTheme.liveBadge.withValues(alpha: 0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 5,
-                      height: 5,
-                      decoration: const BoxDecoration(
-                        color: GoPlayTheme.liveBadge,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'LIVE',
-                      style: GoPlayType.meta.copyWith(color: GoPlayTheme.liveBadge),
-                      maxLines: 1,
-                    ),
-                  ],
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const int _kPageSize = 50;
+// ─── Search Results Page ──────────────────────────────────────
+const int _kPageSize = 40;
 
 class _SearchResults extends ConsumerStatefulWidget {
   final String query;
+  final VoidCallback onClear;
 
-  const _SearchResults({required this.query});
+  const _SearchResults({
+    required this.query,
+    required this.onClear,
+  });
 
   @override
   ConsumerState<_SearchResults> createState() => _SearchResultsState();
@@ -461,8 +392,6 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
   int _channelLimit = _kPageSize;
   int _eventLimit = _kPageSize;
 
-  // Reset page limits whenever the search query changes so stale
-  // paged state from a previous search never bleeds into the new one.
   @override
   void didUpdateWidget(_SearchResults old) {
     super.didUpdateWidget(old);
@@ -477,14 +406,15 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
     final channelsAsync = ref.watch(filteredChannelsProvider(widget.query));
     final eventsAsync = ref.watch(filteredEventsProvider(widget.query));
 
-    // Handle loading states
     if (channelsAsync.isLoading || eventsAsync.isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: GoPlayTheme.primary),
+        child: CircularProgressIndicator(
+          color: GoPlayTheme.primary,
+          strokeWidth: 2.5,
+        ),
       );
     }
 
-    // Handle error states
     if (channelsAsync.hasError || eventsAsync.hasError) {
       return Center(
         child: Text(
@@ -504,35 +434,67 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
 
     if (showNoResults) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 64,
-              color: GoPlayTheme.onSurfaceVariant.withValues(alpha: 0.3),
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                'No results found for "${widget.query}"',
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 80,
+                height: 80,
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    color: GoPlayTheme.surfaceContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.search_off_rounded,
+                    size: 36,
+                    color: GoPlayTheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'No results for "${widget.query}"',
                 textAlign: TextAlign.center,
                 style: GoPlayType.subtitle.copyWith(
-                  color: GoPlayTheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: GoPlayTheme.onSurface,
                 ),
-                // The query is user-entered and unbounded.
-                maxLines: 3,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'Try checking for spelling errors or searching another keyword.',
+                textAlign: TextAlign.center,
+                style: GoPlayType.body.copyWith(
+                  color: GoPlayTheme.onSurfaceVariant,
+                  fontSize: GoPlayType.sm,
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: GoPlayTheme.surfaceContainerHigh,
+                  foregroundColor: GoPlayTheme.onSurface,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                ),
+                onPressed: widget.onClear,
+                child: Text('Clear search', style: GoPlayType.label),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    // Clamp visible slices to current limits
     final visibleChannels = allChannels.take(_channelLimit).toList();
     final visibleEvents = allEvents.take(_eventLimit).toList();
     final hasMoreChannels = allChannels.length > _channelLimit;
@@ -541,39 +503,105 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
-        // â”€â”€ Channels Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if (showChannels) ...[
+        // ─── Matches / Events Section ─────────────────────────────
+        if (showEvents) ...[
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
               child: Row(
                 children: [
                   Text(
-                    'CHANNELS',
-                    style: GoPlayType.meta.copyWith(
-                      color: GoPlayTheme.onSurfaceMuted,
-                      letterSpacing: GoPlayType.trackingWide,
+                    'Matches',
+                    style: GoPlayType.sectionTitle.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      color: GoPlayTheme.onSurface,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    '${allChannels.length}',
-                    style: GoPlayType.inter(
-                      color: GoPlayTheme.onSurfaceMuted,
-                      fontSize: GoPlayType.xs,
-                      fontWeight: FontWeight.w600,
-                      height: GoPlayType.leadingSnug,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: GoPlayTheme.surfaceContainer,
+                      borderRadius: BorderRadius.circular(100),
                     ),
-                    maxLines: 1,
+                    child: Text(
+                      '${allEvents.length}',
+                      style: GoPlayType.inter(
+                        color: GoPlayTheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _buildEventCard(context, visibleEvents[index]),
+                childCount: visibleEvents.length,
+              ),
+            ),
+          ),
+          if (hasMoreEvents)
+            SliverToBoxAdapter(
+              child: _LoadMoreButton(
+                remaining: allEvents.length - _eventLimit,
+                onTap: () => setState(() => _eventLimit += _kPageSize),
+              ),
+            ),
+        ],
+
+        if (showChannels && showEvents)
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+        // ─── Channels Section ─────────────────────────────────────
+        if (showChannels) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+              child: Row(
+                children: [
+                  Text(
+                    'Channels',
+                    style: GoPlayType.sectionTitle.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      color: GoPlayTheme.onSurface,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: GoPlayTheme.surfaceContainer,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: Text(
+                      '${allChannels.length}',
+                      style: GoPlayType.inter(
+                        color: GoPlayTheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) => _buildChannelCard(
@@ -585,7 +613,6 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
               ),
             ),
           ),
-          // Load-more button for channels
           if (hasMoreChannels)
             SliverToBoxAdapter(
               child: _LoadMoreButton(
@@ -595,62 +622,7 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
             ),
         ],
 
-        // Spacing between sections
-        if (showChannels && showEvents)
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-        // â”€â”€ Events Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if (showEvents) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Row(
-                children: [
-                  Text(
-                    'LIVE EVENTS',
-                    style: GoPlayType.meta.copyWith(
-                      color: GoPlayTheme.onSurfaceMuted,
-                      letterSpacing: GoPlayType.trackingWide,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${allEvents.length}',
-                    style: GoPlayType.inter(
-                      color: GoPlayTheme.onSurfaceMuted,
-                      fontSize: GoPlayType.xs,
-                      fontWeight: FontWeight.w600,
-                      height: GoPlayType.leadingSnug,
-                    ),
-                    maxLines: 1,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _buildEventCard(context, visibleEvents[index]),
-                childCount: visibleEvents.length,
-              ),
-            ),
-          ),
-          // Load-more button for events
-          if (hasMoreEvents)
-            SliverToBoxAdapter(
-              child: _LoadMoreButton(
-                remaining: allEvents.length - _eventLimit,
-                onTap: () => setState(() => _eventLimit += _kPageSize),
-              ),
-            ),
-        ],
-
-        // Bottom spacing
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );
   }
@@ -660,52 +632,67 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
     Channel ch, {
     required List<Channel> scope,
   }) {
-    return GestureDetector(
-      onTap: () => _openPlayer(context, ch, scope),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: GoPlayTheme.surfaceContainer.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.04),
-            width: 1,
-          ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: GoPlayTheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0x14FFFFFF),
+          width: 0.6,
         ),
-        child: Row(
-          children: [
-            _ChannelAvatar(ch: ch),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ch.displayName,
-                    style: GoPlayType.label.copyWith(color: GoPlayTheme.onSurface),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _openPlayer(context, ch, scope),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                _ChannelAvatar(ch: ch),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ch.displayName,
+                        style: GoPlayType.label.copyWith(
+                          color: GoPlayTheme.onSurface,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${ch.category ?? 'General'} • ${ch.country ?? 'Global'}',
+                        style: GoPlayType.bodySmall.copyWith(
+                          color: GoPlayTheme.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${ch.category ?? 'General'} â€¢ ${ch.country ?? 'Global'}',
-                    style: GoPlayType.bodySmall.copyWith(color: GoPlayTheme.onSurfaceVariant),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                ),
+                if (ch.isLive) const _LiveBadge(),
+              ],
             ),
-            if (ch.isLive) const _LiveBadge(),
-          ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildEventCard(BuildContext context, SportEvent event) {
-    return GestureDetector(
+    return PlayZEventCard(
+      event: event,
       onTap: () {
         if (event.channels.isNotEmpty) {
           context.push(
@@ -718,176 +705,99 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No channels available for this event.'),
-              backgroundColor: GoPlayTheme.error,
+              content: Text('No stream channels available for this event.'),
+              backgroundColor: GoPlayTheme.surfaceContainerHighest,
             ),
           );
         }
       },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: GoPlayTheme.surfaceContainer.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.04),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: GoPlayTheme.surfaceContainerHigh.withValues(alpha: 0.6),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  width: 1,
-                ),
-              ),
-              child: TeamFlagWidget(flag: event.homeTeam.flag, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${event.homeTeam.name} vs ${event.awayTeam.name}',
-                    style: GoPlayType.label.copyWith(color: GoPlayTheme.onSurface),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${event.league} â€¢ ${event.sport}',
-                    style: GoPlayType.bodySmall.copyWith(color: GoPlayTheme.onSurfaceVariant),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            if (event.isLive) const _LiveBadge(),
-          ],
-        ),
-      ),
     );
   }
 }
 
-// â”€â”€â”€ Shared micro-widgets (extracted to avoid repeated allocations) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Shared Micro-Widgets ─────────────────────────────────────
 
-/// Circular channel logo with text-initials fallback.
+/// Circular channel logo with initials fallback.
 class _ChannelAvatar extends StatelessWidget {
   final Channel ch;
   const _ChannelAvatar({required this.ch});
-
-  String get _initials =>
-      ch.initials;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: 44,
       height: 44,
-      decoration: BoxDecoration(
-        color: GoPlayTheme.surfaceContainerHigh,
+      decoration: const BoxDecoration(
+        color: GoPlayTheme.surfaceContainerHighest,
         shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1,
-        ),
       ),
-      child: ch.logo != null && ch.logo!.isNotEmpty
-          ? CachedNetworkImage(
-              imageUrl: ch.logo!,
-              fit: BoxFit.cover,
-              memCacheWidth: 88,
-              memCacheHeight: 88,
-              imageBuilder: (context, imageProvider) => Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  image: DecorationImage(
-                    image: imageProvider,
-                    fit: BoxFit.cover,
+      child: ClipOval(
+        child: ch.logo != null && ch.logo!.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: ch.logo!,
+                fit: BoxFit.cover,
+                memCacheWidth: 88,
+                memCacheHeight: 88,
+                placeholder: (context, url) => Center(
+                  child: Text(
+                    ch.initials,
+                    style: GoPlayType.labelSmall.copyWith(
+                      color: GoPlayTheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
-              placeholder: (context, url) => Center(
+                errorWidget: (context, url, error) => Center(
+                  child: Text(
+                    ch.initials,
+                    style: GoPlayType.labelSmall.copyWith(
+                      color: GoPlayTheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              )
+            : Center(
                 child: Text(
-                  _initials,
+                  ch.initials,
                   style: GoPlayType.labelSmall.copyWith(
                     color: GoPlayTheme.primary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-              errorWidget: (context, url, error) => Center(
-                child: Text(
-                  _initials,
-                  style: GoPlayType.labelSmall.copyWith(
-                    color: GoPlayTheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            )
-          : Center(
-              child: Text(
-                _initials,
-                style: GoPlayType.labelSmall.copyWith(
-                  color: GoPlayTheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+      ),
     );
   }
 }
 
-/// LIVE pill badge â€” const constructor so Flutter reuses the same element.
+/// Compact minimal LIVE badge.
 class _LiveBadge extends StatelessWidget {
   const _LiveBadge();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: GoPlayTheme.liveBadge.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: GoPlayTheme.liveBadge.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        color: GoPlayTheme.liveBadge,
+        borderRadius: BorderRadius.circular(4),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 5,
-            height: 5,
-            decoration: const BoxDecoration(
-              color: GoPlayTheme.liveBadge,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            'LIVE',
-            style: GoPlayType.meta.copyWith(color: GoPlayTheme.liveBadge),
-            maxLines: 1,
-          ),
-        ],
+      child: Text(
+        'LIVE',
+        style: GoPlayType.meta.copyWith(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+        ),
+        maxLines: 1,
       ),
     );
   }
 }
 
-/// "Load X more" tappable row shown below a capped section.
+/// "Load X more" button for capped sections.
 class _LoadMoreButton extends StatelessWidget {
   final int remaining;
   final VoidCallback onTap;
@@ -901,18 +811,19 @@ class _LoadMoreButton extends StatelessWidget {
         : 'Show all $remaining remaining';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-      child: GestureDetector(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+      child: InkWell(
         onTap: onTap,
-        child: Container(
+        borderRadius: BorderRadius.circular(10),
+        child: Ink(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
-            color: GoPlayTheme.surfaceContainer.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(12),
+            color: GoPlayTheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.06),
-              width: 1,
+              color: const Color(0x14FFFFFF),
+              width: 0.6,
             ),
           ),
           child: Row(
@@ -926,7 +837,11 @@ class _LoadMoreButton extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 label,
-                style: GoPlayType.label.copyWith(color: GoPlayTheme.primary),
+                style: GoPlayType.label.copyWith(
+                  color: GoPlayTheme.primary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
                 maxLines: 1,
               ),
             ],

@@ -103,28 +103,46 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                     ),
                   );
                 },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    width: 104,
-                    height: 104,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: 104,
-                        height: 104,
-                        decoration: BoxDecoration(
-                          color: GoPlayTheme.primary,
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: const Icon(
-                          Icons.play_arrow_rounded,
-                          size: 52,
-                          color: Colors.white,
-                        ),
-                      );
-                    },
+                child: Container(
+                  width: 104,
+                  height: 104,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: const Color(0x28FFFFFF),
+                      width: 1.0,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 16,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(23),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      width: 104,
+                      height: 104,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 104,
+                          height: 104,
+                          decoration: BoxDecoration(
+                            color: GoPlayTheme.primary,
+                            borderRadius: BorderRadius.circular(23),
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow_rounded,
+                            size: 52,
+                            color: Color(0xFF0F0F0F),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),

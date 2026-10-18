@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../models/channel.dart';
 import '../screens/shell_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/channels/channels_screen.dart';
@@ -67,17 +68,20 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final channelId = state.pathParameters['channelId']!;
         List<String>? eventChannels;
+        List<Channel>? dynamicChannels;
         bool forceFullscreen = false;
 
         if (state.extra is Map<String, dynamic>) {
           final extra = state.extra as Map<String, dynamic>;
           eventChannels = extra['eventChannels'] as List<String>?;
+          dynamicChannels = extra['dynamicChannels'] as List<Channel>?;
           forceFullscreen = extra['forceFullscreen'] as bool? ?? false;
         }
 
         return PlayerScreen(
           channelId: channelId,
           eventChannels: eventChannels,
+          dynamicChannels: dynamicChannels,
           forceFullscreen: forceFullscreen,
         );
       },

@@ -13,6 +13,7 @@ import '../../models/channel.dart';
 import '../../models/announcement.dart';
 
 import '../../widgets/cards/event_card.dart';
+import '../../services/stream_decryptor.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/live_badge.dart';
 import '../../widgets/team_flag.dart';
@@ -467,7 +468,7 @@ class _HeroBannerState extends ConsumerState<_HeroBanner> {
                           ),
                           color: active
                               ? GoPlayTheme.primary
-                              : const Color(0x5000ADB5),
+                              : const Color(0x50C8FF00),
                         ),
                       );
                     }),
@@ -795,7 +796,7 @@ class _WatchButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x2000ADB5),
+            color: Color(0x26C8FF00),
             blurRadius: 6,
             offset: Offset(0, 2),
           ),
@@ -896,7 +897,7 @@ class _SportCategoryFilterChips extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? Colors.white
+                        ? GoPlayTheme.primary
                         : const Color(0xFF272727),
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -924,17 +925,20 @@ class _TodaySchedule extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedSport = ref.watch(selectedSportFilterProvider);
-    final eventsAsync = ref.watch(filteredTodayEventsProvider(selectedSport));
+    final eventsAsync = ref.watch(filteredLiveEventsProvider(selectedSport));
 
     return eventsAsync.when(
-      data: (todayEvents) {
-        if (todayEvents.isEmpty) {
-          return const SliverToBoxAdapter(
+      data: (liveEvents) {
+        if (liveEvents.isEmpty) {
+          final emptyText = selectedSport.toLowerCase() == 'all'
+              ? 'No live events streaming right now'
+              : 'No live $selectedSport matches right now';
+          return SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Text(
-                'No events scheduled for this category today',
-                style: TextStyle(color: GoPlayTheme.onSurfaceVariant),
+                emptyText,
+                style: const TextStyle(color: GoPlayTheme.onSurfaceVariant),
               ),
             ),
           );
@@ -942,7 +946,7 @@ class _TodaySchedule extends ConsumerWidget {
 
         final isDesktopOrTv = MediaQuery.of(context).size.width >= 800;
 
-        void handleTap(SportEvent event) {
+        Future<void> handleTap(SportEvent event) async {
           if (event.channels.isNotEmpty) {
             context.push(
               '/player/${event.channels.first}',
@@ -951,14 +955,42 @@ class _TodaySchedule extends ConsumerWidget {
                 'forceFullscreen': true,
               },
             );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('No channels available for this event.'),
-                backgroundColor: GoPlayTheme.error,
-              ),
-            );
+            return;
           }
+
+          // Fallback: JIT fetch and decrypt streams if channels are not pre-cached
+          final linksPath = event.links;
+          if (linksPath != null && linksPath.isNotEmpty) {
+            try {
+              final streams = await StreamDecryptor.fetchAndDecryptStreams(
+                linksPath: linksPath,
+                eventId: event.id,
+                eventTitle: '${event.homeTeam.name} vs ${event.awayTeam.name}',
+                logo: event.banner,
+              );
+
+              if (streams.isNotEmpty) {
+                if (!context.mounted) return;
+                context.push(
+                  '/player/${streams.first.id}',
+                  extra: {
+                    'eventChannels': streams.map((c) => c.id).toList(),
+                    'dynamicChannels': streams,
+                    'forceFullscreen': true,
+                  },
+                );
+                return;
+              }
+            } catch (_) {}
+          }
+
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No active streams available for this event yet.'),
+              backgroundColor: GoPlayTheme.error,
+            ),
+          );
         }
 
         if (isDesktopOrTv) {
@@ -971,9 +1003,9 @@ class _TodaySchedule extends ConsumerWidget {
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 0,
               ),
-              itemCount: todayEvents.length,
+              itemCount: liveEvents.length,
               itemBuilder: (context, index) {
-                final event = todayEvents[index];
+                final event = liveEvents[index];
                 return EventCard(
                   key: ValueKey(event.id),
                   event: event,
@@ -986,9 +1018,9 @@ class _TodaySchedule extends ConsumerWidget {
 
         return SliverFixedExtentList.builder(
           itemExtent: EventCard.tileExtent(context),
-          itemCount: todayEvents.length,
+          itemCount: liveEvents.length,
           itemBuilder: (context, index) {
-            final event = todayEvents[index];
+            final event = liveEvents[index];
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: EventCard(
@@ -1173,10 +1205,10 @@ class _UpcomingBadge extends StatelessWidget {
   const _UpcomingBadge();
 
   static const _decoration = BoxDecoration(
-    color: Color(0x1E00ADB5),
+    color: Color(0x26C8FF00),
     borderRadius: BorderRadius.all(Radius.circular(4)),
     border: Border.fromBorderSide(
-      BorderSide(color: Color(0x5000ADB5), width: 0.5),
+      BorderSide(color: Color(0x50C8FF00), width: 0.5),
     ),
   );
 

@@ -15,10 +15,10 @@ class GoPlayTheme {
   // ==========================================
   //               BRAND COLORS
   // ==========================================
-  static const Color primary = Color(0xFF00ADB5); // Teal accent
-  static const Color primaryDark = Color(0xFF008A91);
-  static const Color primaryLight = Color(0xFF4DD8DE);
-  static const Color secondary = Color(0xFF80CBC4);
+  static const Color primary = Color(0xFFC8FF00); // Volt / Cyber Lime accent
+  static const Color primaryDark = Color(0xFF6B8700);
+  static const Color primaryLight = Color(0xFFD6FF33);
+  static const Color secondary = Color(0xFFD6FF4D);
   static const Color error = Color(0xFFFF453A);
   static const Color success = Color(0xFF32D74B);
   static const Color warning = Color(0xFFFFB020);
@@ -38,9 +38,9 @@ class GoPlayTheme {
   static const Color darkOnSurfaceMuted = Color(0xFF888888); // Tertiary text
   static const Color darkCardBorder = Color(0x14FFFFFF); // Sleek hairline border
   static const Color darkDivider = Color(0x1AFFFFFF);
-  static const Color darkPrimaryContainer = Color(0xFF00363A);
-  static const Color darkOnPrimaryContainer = Color(0xFF7FE9EF);
-  static const Color darkOnPrimary = Color(0xFF00282B);
+  static const Color darkPrimaryContainer = Color(0xFF242E00);
+  static const Color darkOnPrimaryContainer = Color(0xFFE2FF66);
+  static const Color darkOnPrimary = Color(0xFF0F0F0F);
 
   // ==========================================
   //             LIGHT MODE PALETTE
@@ -56,8 +56,8 @@ class GoPlayTheme {
   static const Color lightOnSurfaceMuted = Color(0xFF6B6F78);
   static const Color lightCardBorder = Color(0x14000000);
   static const Color lightDivider = Color(0x0F000000);
-  static const Color lightPrimaryContainer = Color(0xFFD4F4F5);
-  static const Color lightOnPrimaryContainer = Color(0xFF00363A);
+  static const Color lightPrimaryContainer = Color(0xFFF0FFB3);
+  static const Color lightOnPrimaryContainer = Color(0xFF242E00);
 
   // --- Legacy / compatibility aliases (kept so existing references don't break) ---
   static const Color surface = darkSurface;
@@ -117,7 +117,7 @@ class GoPlayTheme {
       primaryContainer: darkPrimaryContainer,
       onPrimaryContainer: darkOnPrimaryContainer,
       secondary: secondary,
-      onSecondary: Color(0xFF00332F),
+      onSecondary: Color(0xFF1B2300),
       surface: darkSurface,
       surfaceContainerLowest: Color(0xFF08090A),
       surfaceContainerLow: darkSurfaceContainerLow,
@@ -330,7 +330,7 @@ class GoPlayTheme {
       // --- Selection controls ---
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) =>
-            states.contains(WidgetState.selected) ? Colors.white : darkOnSurfaceMuted),
+            states.contains(WidgetState.selected) ? darkOnPrimary : darkOnSurfaceMuted),
         trackColor: WidgetStateProperty.resolveWith((states) =>
             states.contains(WidgetState.selected) ? primary : darkSurfaceContainerHigh),
         trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),

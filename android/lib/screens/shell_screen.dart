@@ -48,7 +48,6 @@ class _ShellScreenState extends State<ShellScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final index = widget.navigationShell.currentIndex;
 
     // Scoped MediaQuery reads. `MediaQuery.of(context)` subscribes to every
@@ -76,12 +75,6 @@ class _ShellScreenState extends State<ShellScreen> {
                 width: 72,
                 decoration: const BoxDecoration(
                   color: Color(0xFF0F0F0F),
-                  border: Border(
-                    right: BorderSide(
-                      color: Color(0x14FFFFFF),
-                      width: 0.5,
-                    ),
-                  ),
                 ),
                 child: SafeArea(
                   child: Column(
@@ -107,9 +100,9 @@ class _ShellScreenState extends State<ShellScreen> {
                       const SizedBox(height: 8),
                       _RailNavItem(
                         focusNode: _navFocusNodes[2],
-                        icon: Icons.schedule_outlined,
-                        selectedIcon: Icons.schedule_rounded,
-                        label: 'Upcoming',
+                        icon: Icons.sports_soccer_outlined,
+                        selectedIcon: Icons.sports_soccer_rounded,
+                        label: 'Events',
                         isSelected: index == 2,
                         onTap: () => _goBranch(2),
                       ),
@@ -133,12 +126,6 @@ class _ShellScreenState extends State<ShellScreen> {
             height: 64 + bottomPadding,
             decoration: const BoxDecoration(
               color: Color(0xFF0F0F0F),
-              border: Border(
-                top: BorderSide(
-                  color: Color(0x14FFFFFF),
-                  width: 0.5,
-                ),
-              ),
             ),
             padding: EdgeInsets.only(bottom: bottomPadding),
             child: Row(
@@ -161,9 +148,9 @@ class _ShellScreenState extends State<ShellScreen> {
                 ),
                 _NavItem(
                   focusNode: _navFocusNodes[2],
-                  icon: Icons.schedule_outlined,
-                  selectedIcon: Icons.schedule_rounded,
-                  label: 'Upcoming',
+                  icon: Icons.sports_soccer_outlined,
+                  selectedIcon: Icons.sports_soccer_rounded,
+                  label: 'Events',
                   isSelected: index == 2,
                   onTap: () => _goBranch(2),
                 ),

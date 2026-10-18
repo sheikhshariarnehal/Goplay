@@ -2,4 +2,5 @@
 <resources>
     <!-- App dark background matching GoPlayTheme.darkSurface (#0E0F11) -->
     <color name="splash_bg">#0E0F11</color>
+	<color name="ic_launcher_background">#080808</color>
 </resources>
