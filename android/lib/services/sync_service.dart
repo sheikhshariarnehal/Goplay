@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'cache_service.dart';
 import 'supabase_service.dart';
+import 'stream_decryptor.dart';
 import '../providers/app_providers.dart';
 
 /// Orchestrates version-based background synchronization for channels and events.
@@ -39,7 +40,6 @@ class SyncService {
       );
 
       bool channelsUpdated = false;
-      bool eventsUpdated = false;
 
       // 2. Synchronize Channels and Categories
       if (localChannelsVer == null || remoteChannelsVer > localChannelsVer) {
@@ -59,31 +59,25 @@ class SyncService {
         debugPrint('SyncService: Channels and categories synchronized.');
       }
 
-      // 3. Synchronize Events
-      if (localEventsVer == null || remoteEventsVer > localEventsVer) {
-        debugPrint('SyncService: Events version changed. Downloading events...');
-        
-        final remoteEvents = await supabase.getEvents();
-        await cache.saveLocalEvents(remoteEvents);
-
-        // Update local version
-        await cache.saveLocalEventsVersion(remoteEventsVer);
-        eventsUpdated = true;
-        debugPrint('SyncService: Events synchronized.');
+      // 3. Synchronize Events directly from pabbdyzone.shop API
+      try {
+        debugPrint('SyncService: Syncing live events directly from pabbdyzone.shop...');
+        final directEvents = await StreamDecryptor.fetchLiveEvents();
+        if (directEvents.isNotEmpty) {
+          await cache.saveLocalEvents(directEvents);
+          _ref.invalidate(eventsProvider);
+          _ref.invalidate(eventCategoriesProvider);
+          debugPrint('SyncService: Live events synchronized directly (${directEvents.length} events).');
+        }
+      } catch (e) {
+        debugPrint('SyncService: Direct events sync non-fatal error: $e');
       }
 
-      // 4. Invalidate providers if anything changed to trigger reactive UI updates
-      // Only invalidate if we had a prior valid local version (meaning we displayed old cache and need to refresh it).
-      // If the local version was null, the provider was awaiting the sync completion anyway, so it will naturally load the new data.
+      // 4. Invalidate channels/categories providers if anything changed
       if (channelsUpdated && localChannelsVer != null) {
         debugPrint('SyncService: Invalidating channels and categories providers...');
         _ref.invalidate(channelsProvider);
         _ref.invalidate(categoriesProvider);
-      }
-
-      if (eventsUpdated && localEventsVer != null) {
-        debugPrint('SyncService: Invalidating events providers...');
-        _ref.invalidate(eventsProvider);
       }
 
       // 5. Sync announcements (lightweight — no version check, always refresh)

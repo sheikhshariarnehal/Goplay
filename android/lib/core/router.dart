@@ -66,7 +66,8 @@ final appRouter = GoRouter(
       path: '/player/:channelId',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) {
-        final channelId = state.pathParameters['channelId']!;
+        final rawId = state.pathParameters['channelId'] ?? '';
+        final channelId = Uri.decodeComponent(rawId);
         List<String>? eventChannels;
         List<Channel>? dynamicChannels;
         bool forceFullscreen = false;

@@ -8,6 +8,7 @@ import '../../core/typography.dart';
 import '../../providers/app_providers.dart';
 import '../../models/channel.dart';
 import '../../models/event.dart';
+import '../../services/event_stream_launcher.dart';
 import '../../widgets/cards/playz_event_card.dart';
 
 /// Opens [ch] in the player scoped to [scope] — the list the user tapped it in.
@@ -693,24 +694,7 @@ class _SearchResultsState extends ConsumerState<_SearchResults> {
   Widget _buildEventCard(BuildContext context, SportEvent event) {
     return PlayZEventCard(
       event: event,
-      onTap: () {
-        if (event.channels.isNotEmpty) {
-          context.push(
-            '/player/${event.channels.first}',
-            extra: {
-              'eventChannels': event.channels,
-              'forceFullscreen': true,
-            },
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No stream channels available for this event.'),
-              backgroundColor: GoPlayTheme.surfaceContainerHighest,
-            ),
-          );
-        }
-      },
+      onTap: () => EventStreamLauncher.launch(context, event),
     );
   }
 }

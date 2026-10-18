@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import '../models/channel.dart';
 import '../models/drm_config.dart';
+import '../models/event.dart';
 
 /// Stream Decryptor & Parser for Live Events
 ///
@@ -230,8 +231,9 @@ class StreamDecryptor {
           }
         }
 
+        final safeEventId = eventId.replaceAll('/', '_');
         channels.add(Channel(
-          id: 'live_${eventId}_$i',
+          id: 'live_${safeEventId}_$i',
           name: streamName,
           logo: logo,
           category: 'events',
@@ -246,6 +248,118 @@ class StreamDecryptor {
       return channels;
     } catch (_) {
       return const [];
+    }
+  }
+
+  /// Fetches raw encrypted `events.txt` directly from `https://pabbdyzone.shop/events.txt`,
+  /// decrypts it using Tier-1 AES-128-CBC / substitution cipher, and maps to [SportEvent] objects.
+  static Future<List<SportEvent>> fetchLiveEvents({
+    String? customBaseUrl,
+  }) async {
+    final baseUrl = customBaseUrl ?? baseProUrl;
+    final url = '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/events.txt';
+
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 12),
+        receiveTimeout: const Duration(seconds: 12),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+        },
+      ));
+
+      final response = await dio.get<String>(url);
+      final raw = response.data?.trim() ?? '';
+      if (raw.isEmpty) return const [];
+
+      final decrypted = decryptAuto(raw);
+      final dynamic decoded = json.decode(decrypted);
+
+      if (decoded is! List) return const [];
+
+      final events = <SportEvent>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+
+        // API wraps each item as {"event": "{\"visible\":true,...}"}
+        if (map.containsKey('event')) {
+          final dynamic inner = map['event'];
+          if (inner is String) {
+            try {
+              final parsedInner = json.decode(inner);
+              if (parsedInner is Map) {
+                final eventMap = Map<String, dynamic>.from(parsedInner);
+                if (eventMap['visible'] == false) continue;
+                events.add(SportEvent.fromJson(eventMap));
+              }
+            } catch (_) {}
+          } else if (inner is Map) {
+            final eventMap = Map<String, dynamic>.from(inner);
+            if (eventMap['visible'] == false) continue;
+            events.add(SportEvent.fromJson(eventMap));
+          }
+        } else {
+          if (map['visible'] == false) continue;
+          events.add(SportEvent.fromJson(map));
+        }
+      }
+
+      return events;
+    } catch (e) {
+      return const [];
+    }
+  }
+
+  /// Fetches event category logos from `https://pabbdyzone.shop/event_cats.txt`.
+  /// Returns a map of Category/Sport Name -> Logo URL.
+  static Future<Map<String, String>> fetchEventCategories({
+    String? customBaseUrl,
+  }) async {
+    final baseUrl = customBaseUrl ?? baseProUrl;
+    final url = '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/event_cats.txt';
+
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+        },
+      ));
+
+      final response = await dio.get<String>(url);
+      final raw = response.data?.trim() ?? '';
+      if (raw.isEmpty) return const {};
+
+      final decrypted = decryptAuto(raw);
+      final dynamic decoded = json.decode(decrypted);
+
+      final result = <String, String>{};
+      if (decoded is Map) {
+        for (final entry in decoded.entries) {
+          result[entry.key.toString()] = entry.value.toString();
+        }
+      } else if (decoded is List) {
+        for (final item in decoded) {
+          if (item is Map && item.containsKey('cat')) {
+            final dynamic catData = item['cat'];
+            if (catData is String) {
+              try {
+                final catMap = json.decode(catData);
+                if (catMap is Map && catMap['name'] != null && catMap['logo'] != null) {
+                  result[catMap['name'].toString()] = catMap['logo'].toString();
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      }
+      return result;
+    } catch (_) {
+      return const {};
     }
   }
 }

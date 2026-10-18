@@ -8,6 +8,7 @@ import '../models/channel.dart';
 import '../models/event.dart';
 import '../models/category.dart';
 import '../models/announcement.dart';
+import '../services/stream_decryptor.dart';
 
 // ─── Core Service Providers ───────────────────────────────────
 final supabaseServiceProvider = Provider<SupabaseService>((ref) {
@@ -116,17 +117,25 @@ final channelProvider =
   }
 });
 
-// ─── Events ───────────────────────────────────────────────────
+// ─── Events (Direct API from https://pabbdyzone.shop) ──────────
+final eventCategoriesProvider = FutureProvider<Map<String, String>>((ref) async {
+  return StreamDecryptor.fetchEventCategories();
+});
+
 final eventsProvider = FutureProvider<List<SportEvent>>((ref) async {
   final cache = ref.watch(cacheServiceProvider);
-  final localEvents = cache.getLocalEvents();
 
-  if (localEvents.isEmpty) {
-    // If the local cache is empty (first install), wait for the background sync to populate it
-    await ref.watch(appSyncProvider.future);
-    return cache.getLocalEvents();
-  }
-  return localEvents;
+  try {
+    final directEvents = await StreamDecryptor.fetchLiveEvents();
+    if (directEvents.isNotEmpty) {
+      // Cache fresh live events locally
+      await cache.saveLocalEvents(directEvents);
+      return directEvents;
+    }
+  } catch (_) {}
+
+  // Fallback to local cache if offline or direct fetch fails
+  return cache.getLocalEvents();
 });
 
 final liveEventsProvider = FutureProvider<List<SportEvent>>((ref) async {

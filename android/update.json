@@ -1,14 +1,14 @@
 {
-    "latestVersion": "2.1.0",
-    "minimumVersion": "2.0.0",
-    "forceUpdate": false,
-    "apkUrl": "https://cdn.ntechbd.app/goplay-2.1.0.apk",
-    "releaseNotes": [
-        "New dark look",
-        "Easier channel and favorites browsing",
-        "Quick section navigation",
-        "Updated cards and empty screens",
-        "Faster and smoother experience"
-    ],
-    "publishedAt": "2026-08-22 01:15:00+06:00"
+  "latestVersion": "2.2.0",
+  "minimumVersion": "2.0.0",
+  "forceUpdate": false,
+  "apkUrl": "https://cdn.ntechbd.app/goplay-2.2.0.apk",
+  "releaseNotes": [
+    "New! Watch live sports events directly in GoPlay.",
+    "Easily discover upcoming and live matches in one place.",
+    "Enjoy a smoother streaming experience with improved loading.",
+    "Live match information refreshes automatically to keep you up to date.",
+    "Improved stream stability and overall app performance."
+  ],
+  "publishedAt": "2026-10-18 23:46:00+06:00"
 }

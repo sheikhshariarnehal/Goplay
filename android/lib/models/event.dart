@@ -170,7 +170,7 @@ class SportEvent {
     }
 
     return SportEvent(
-      id: (json['id'] ?? json['links'] ?? UniqueKey().toString()).toString(),
+      id: (json['id'] ?? (json['links'] != null ? (json['links'] as String).replaceAll('/', '_') : null) ?? UniqueKey().toString()).toString().replaceAll('/', '_'),
       sport: json['sport'] as String? ?? json['category'] as String? ?? 'Sports',
       league: json['league'] as String? ?? json['eventName'] as String? ?? '',
       homeTeam: json['home_team'] is Map

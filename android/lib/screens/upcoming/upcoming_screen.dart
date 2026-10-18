@@ -2,14 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/theme.dart';
 import '../../core/typography.dart';
 import '../../providers/app_providers.dart';
 import '../../models/event.dart';
-import '../../services/stream_decryptor.dart';
+import '../../services/event_stream_launcher.dart';
 import '../../widgets/cards/playz_event_card.dart';
 import '../../widgets/app_overflow_menu.dart';
 import '../../widgets/tv_focus_wrapper.dart';
@@ -29,8 +28,9 @@ class UpcomingScreen extends ConsumerStatefulWidget {
 }
 
 class _UpcomingScreenState extends ConsumerState<UpcomingScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabController;
+  Timer? _realtimeRefreshTimer;
 
   static const _tabs = [
     'Live',
@@ -43,122 +43,46 @@ class _UpcomingScreenState extends ConsumerState<UpcomingScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: _tabs.length, vsync: this);
+
+    // Initial background refresh of direct live events
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handleRefresh();
+    });
+
+    // 45-second polling interval for real-time live events updates
+    _realtimeRefreshTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (mounted) {
+        _handleRefresh();
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _handleRefresh();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _realtimeRefreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
   Future<void> _handleRefresh() async {
     try {
-      await ref.read(syncServiceProvider).sync();
+      ref.invalidate(eventsProvider);
+      ref.invalidate(eventCategoriesProvider);
     } catch (_) {}
   }
 
   Future<void> _handleEventTap(SportEvent event) async {
-    // 1. If pre-cached channels exist, auto-play stream 0 immediately
-    if (event.channels.isNotEmpty) {
-      if (!mounted) return;
-      context.push(
-        '/player/${event.channels.first}',
-        extra: {
-          'eventChannels': event.channels,
-          'forceFullscreen': true,
-        },
-      );
-      return;
-    }
-
-    // 2. If channels are missing but event has encrypted links, run Smart JIT fetch
-    final linksPath = event.links;
-    if (linksPath != null && linksPath.isNotEmpty) {
-      _showJitLoadingDialog();
-
-      try {
-        final streams = await StreamDecryptor.fetchAndDecryptStreams(
-          linksPath: linksPath,
-          eventId: event.id,
-          eventTitle: '${event.homeTeam.name} vs ${event.awayTeam.name}',
-          logo: event.banner,
-        );
-
-        if (!mounted) return;
-        Navigator.of(context, rootNavigator: true).pop(); // Dismiss HUD
-
-        if (streams.isNotEmpty) {
-          context.push(
-            '/player/${streams.first.id}',
-            extra: {
-              'eventChannels': streams.map((c) => c.id).toList(),
-              'dynamicChannels': streams,
-              'forceFullscreen': true,
-            },
-          );
-          return;
-        }
-      } catch (_) {
-        if (!mounted) return;
-        Navigator.of(context, rootNavigator: true).pop(); // Dismiss HUD
-      }
-    }
-
-    // 3. Fallback notice if no active streams resolved
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('No active streams available yet. Check back closer to kickoff.'),
-        backgroundColor: GoPlayTheme.error,
-        duration: Duration(seconds: 3),
-      ),
-    );
-  }
-
-  void _showJitLoadingDialog() {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0x28FFFFFF)),
-            boxShadow: const [
-              BoxShadow(color: Color(0xDD000000), blurRadius: 20, spreadRadius: 4),
-            ],
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(GoPlayTheme.primary),
-                ),
-              ),
-              SizedBox(width: 16),
-              Text(
-                'Connecting to live feed...',
-                style: TextStyle(
-                  fontFamily: GoPlayType.family,
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    await EventStreamLauncher.launch(context, event);
   }
 
   @override

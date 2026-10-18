@@ -12,8 +12,8 @@ import '../../models/event.dart';
 import '../../models/channel.dart';
 import '../../models/announcement.dart';
 
-import '../../widgets/cards/event_card.dart';
-import '../../services/stream_decryptor.dart';
+import '../../widgets/cards/playz_event_card.dart';
+import '../../services/event_stream_launcher.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/live_badge.dart';
 import '../../widgets/team_flag.dart';
@@ -550,19 +550,7 @@ class _HeroBannerCardState extends ConsumerState<_HeroBannerCard> {
 
     void handleTap() {
       if (!_canWatch) return;
-      if (event.channels.isNotEmpty) {
-        context.push(
-          '/player/${event.channels.first}',
-          extra: {'eventChannels': event.channels, 'forceFullscreen': true},
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No channels available for this event.'),
-            backgroundColor: GoPlayTheme.error,
-          ),
-        );
-      }
+      EventStreamLauncher.launch(context, event);
     }
 
     return TvFocusable(
@@ -947,50 +935,7 @@ class _TodaySchedule extends ConsumerWidget {
         final isDesktopOrTv = MediaQuery.of(context).size.width >= 800;
 
         Future<void> handleTap(SportEvent event) async {
-          if (event.channels.isNotEmpty) {
-            context.push(
-              '/player/${event.channels.first}',
-              extra: {
-                'eventChannels': event.channels,
-                'forceFullscreen': true,
-              },
-            );
-            return;
-          }
-
-          // Fallback: JIT fetch and decrypt streams if channels are not pre-cached
-          final linksPath = event.links;
-          if (linksPath != null && linksPath.isNotEmpty) {
-            try {
-              final streams = await StreamDecryptor.fetchAndDecryptStreams(
-                linksPath: linksPath,
-                eventId: event.id,
-                eventTitle: '${event.homeTeam.name} vs ${event.awayTeam.name}',
-                logo: event.banner,
-              );
-
-              if (streams.isNotEmpty) {
-                if (!context.mounted) return;
-                context.push(
-                  '/player/${streams.first.id}',
-                  extra: {
-                    'eventChannels': streams.map((c) => c.id).toList(),
-                    'dynamicChannels': streams,
-                    'forceFullscreen': true,
-                  },
-                );
-                return;
-              }
-            } catch (_) {}
-          }
-
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No active streams available for this event yet.'),
-              backgroundColor: GoPlayTheme.error,
-            ),
-          );
+          await EventStreamLauncher.launch(context, event);
         }
 
         if (isDesktopOrTv) {
@@ -999,14 +944,14 @@ class _TodaySchedule extends ConsumerWidget {
             sliver: SliverGrid.builder(
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
-                mainAxisExtent: EventCard.tileExtent(context),
+                mainAxisExtent: PlayZEventCard.tileExtent(context),
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 0,
               ),
               itemCount: liveEvents.length,
               itemBuilder: (context, index) {
                 final event = liveEvents[index];
-                return EventCard(
+                return PlayZEventCard(
                   key: ValueKey(event.id),
                   event: event,
                   onTap: () => handleTap(event),
@@ -1017,13 +962,13 @@ class _TodaySchedule extends ConsumerWidget {
         }
 
         return SliverFixedExtentList.builder(
-          itemExtent: EventCard.tileExtent(context),
+          itemExtent: PlayZEventCard.tileExtent(context),
           itemCount: liveEvents.length,
           itemBuilder: (context, index) {
             final event = liveEvents[index];
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: EventCard(
+              child: PlayZEventCard(
                 key: ValueKey(event.id),
                 event: event,
                 onTap: () => handleTap(event),
@@ -1473,7 +1418,7 @@ class _ScheduleSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SliverFixedExtentList.builder(
-      itemExtent: EventCard.tileExtent(context),
+      itemExtent: PlayZEventCard.tileExtent(context),
       itemCount: 3,
       itemBuilder: (context, index) {
         return const Padding(
