@@ -7,6 +7,7 @@ import '../models/channel.dart';
 import '../models/event.dart';
 import '../models/category.dart';
 import '../models/announcement.dart';
+import '../models/hero_banner_item.dart';
 
 /// Service for managing local Hive cache operations for channels, categories,
 /// events, favorites and sync versions.
@@ -21,6 +22,7 @@ class CacheService {
   List<Category>? _categoriesMemo;
   List<SportEvent>? _eventsMemo;
   List<Announcement>? _announcementsMemo;
+  List<HeroBannerItem>? _heroBannersMemo;
   Set<String>? _favoritesMemo;
 
   /// Drops every memoized decode. Used after a cache wipe.
@@ -29,6 +31,7 @@ class CacheService {
     _categoriesMemo = null;
     _eventsMemo = null;
     _announcementsMemo = null;
+    _heroBannersMemo = null;
     _favoritesMemo = null;
   }
 
@@ -161,6 +164,7 @@ class CacheService {
     await _boxOrNull(AppConstants.channelsBox)?.clear();
     await _boxOrNull(AppConstants.eventsBox)?.clear();
     await _boxOrNull(AppConstants.categoriesBox)?.clear();
+    await _boxOrNull(AppConstants.heroBannersBox)?.clear();
     final settingsBox = _boxOrNull(AppConstants.settingsBox);
     await settingsBox?.delete('channels_version');
     await settingsBox?.delete('events_version');
@@ -180,5 +184,21 @@ class CacheService {
     final box = _boxOrNull(AppConstants.announcementsBox);
     if (box == null) return;
     await box.put('announcements', announcements.map((a) => a.toJson()).toList());
+  }
+
+  // ─── Hero Banners ───────────────────────────────────────────
+  List<HeroBannerItem> getLocalHeroBanners() {
+    return _heroBannersMemo ??= _decodeList(
+      AppConstants.heroBannersBox,
+      'hero_banners',
+      HeroBannerItem.fromJson,
+    );
+  }
+
+  Future<void> saveLocalHeroBanners(List<HeroBannerItem> banners) async {
+    _heroBannersMemo = List<HeroBannerItem>.unmodifiable(banners);
+    final box = _boxOrNull(AppConstants.heroBannersBox);
+    if (box == null) return;
+    await box.put('hero_banners', banners.map((b) => b.toJson()).toList());
   }
 }

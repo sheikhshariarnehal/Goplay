@@ -3,6 +3,7 @@ import '../models/channel.dart';
 import '../models/event.dart';
 import '../models/category.dart';
 import '../models/announcement.dart';
+import '../models/hero_banner_item.dart';
 
 /// Service for all Supabase database operations
 class SupabaseService {
@@ -160,6 +161,16 @@ class SupabaseService {
         .eq('active', true)
         .order('created_at', ascending: false);
     return (response as List).map((e) => Announcement.fromJson(e)).toList();
+  }
+
+  // ─── Hero Banners ───────────────────────────────────────────
+  Future<List<HeroBannerItem>> getHeroBanners() async {
+    final response = await _client
+        .from('hero_banners')
+        .select()
+        .eq('active', true)
+        .order('sort_order', ascending: true);
+    return (response as List).map((e) => HeroBannerItem.fromJson(e)).toList();
   }
 
   // ─── Favorites ──────────────────────────────────────────────

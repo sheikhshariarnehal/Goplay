@@ -8,6 +8,7 @@ import '../models/channel.dart';
 import '../models/event.dart';
 import '../models/category.dart';
 import '../models/announcement.dart';
+import '../models/hero_banner_item.dart';
 import '../services/stream_decryptor.dart';
 
 // ─── Core Service Providers ───────────────────────────────────
@@ -366,6 +367,16 @@ final announcementsProvider = FutureProvider<List<Announcement>>((ref) async {
   // If cache is empty, wait for sync to populate it
   await ref.watch(appSyncProvider.future);
   return cache.getLocalAnnouncements();
+});
+
+// ─── Hero Banners (cache-first, background refresh) ───────────
+final heroBannersProvider = FutureProvider<List<HeroBannerItem>>((ref) async {
+  final cache = ref.read(cacheServiceProvider);
+  final local = cache.getLocalHeroBanners();
+  if (local.isNotEmpty) return local;
+  // If cache is empty, wait for sync to populate it
+  await ref.watch(appSyncProvider.future);
+  return cache.getLocalHeroBanners();
 });
 
 // ─── Search ───────────────────────────────────────────────────

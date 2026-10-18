@@ -1,9 +1,10 @@
-// dart:ui import removed â€” BackdropFilter/ImageFilter no longer used.
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme.dart';
 import '../../core/typography.dart';
@@ -11,14 +12,12 @@ import '../../providers/app_providers.dart';
 import '../../models/event.dart';
 import '../../models/channel.dart';
 import '../../models/announcement.dart';
+import '../../models/hero_banner_item.dart';
 
 import '../../widgets/cards/playz_event_card.dart';
 import '../../services/event_stream_launcher.dart';
 import '../../widgets/section_header.dart';
-import '../../widgets/live_badge.dart';
-import '../../widgets/team_flag.dart';
 import '../../widgets/channel_avatar.dart';
-import '../../widgets/countdown_timer.dart';
 import '../../widgets/tv_focus_wrapper.dart';
 import '../../widgets/app_overflow_menu.dart';
 
@@ -39,61 +38,6 @@ const _kInterLeagueBadge = TextStyle(
   letterSpacing: GoPlayType.trackingMeta,
 );
 
-// Team names sit at w600, not w700. On a 68dp info bar a heavier weight put
-// three bold blocks (home team / vs / away team) in a row with nothing quieter
-// between them, and long names like "Antigua And Barbuda Falcons" turned the
-// whole strip into one dense mass.
-const _kInterTeamName = TextStyle(
-  fontFamily: GoPlayType.family,
-  color: Colors.white,
-  fontSize: GoPlayType.base,
-  fontWeight: FontWeight.w600,
-  height: GoPlayType.leadingSnug,
-);
-
-const _kInterVs = TextStyle(
-  fontFamily: GoPlayType.family,
-  color: Colors.white70,
-  fontSize: GoPlayType.sm,
-  fontWeight: FontWeight.w600,
-  height: GoPlayType.leadingFlat,
-);
-
-const _kInterLiveNow = TextStyle(
-  fontFamily: GoPlayType.family,
-  color: GoPlayTheme.primary,
-  fontSize: GoPlayType.xs,
-  fontWeight: FontWeight.w600,
-  height: GoPlayType.leadingFlat,
-  letterSpacing: GoPlayType.trackingMeta,
-);
-
-const _kInterKickoff = TextStyle(
-  fontFamily: GoPlayType.family,
-  color: Colors.white70,
-  fontSize: GoPlayType.xs,
-  fontWeight: FontWeight.w700,
-  height: GoPlayType.leadingFlat,
-  letterSpacing: GoPlayType.trackingMeta,
-);
-
-const _kInterWatch = TextStyle(
-  fontFamily: GoPlayType.family,
-  color: Color(0xFF17181C),
-  fontSize: GoPlayType.xs,
-  fontWeight: FontWeight.w900,
-  height: GoPlayType.leadingFlat,
-  letterSpacing: GoPlayType.trackingMeta,
-);
-
-const _kInterCountdown = TextStyle(
-  fontFamily: GoPlayType.family,
-  color: GoPlayTheme.primary,
-  fontSize: GoPlayType.xs,
-  fontWeight: FontWeight.w700,
-  height: GoPlayType.leadingFlat,
-  letterSpacing: 0.2,
-);
 
 const _kInterSearchHint = TextStyle(
   fontFamily: GoPlayType.family,
@@ -414,53 +358,90 @@ class _HeroBanner extends ConsumerStatefulWidget {
 class _HeroBannerState extends ConsumerState<_HeroBanner> {
   final PageController _pageController = PageController();
   final ValueNotifier<int> _currentPage = ValueNotifier<int>(0);
+  Timer? _autoScrollTimer;
+  int _bannerCount = 0;
 
   @override
   void dispose() {
+    _autoScrollTimer?.cancel();
     _pageController.dispose();
     _currentPage.dispose();
     super.dispose();
   }
 
+  void _startAutoScroll(int count) {
+    _autoScrollTimer?.cancel();
+    _bannerCount = count;
+    if (count <= 1) return;
+
+    _autoScrollTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!_pageController.hasClients) return;
+      final nextPage = (_currentPage.value + 1) % _bannerCount;
+      _pageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOutCubic,
+      );
+    });
+  }
+
+  void _pauseAutoScroll() {
+    _autoScrollTimer?.cancel();
+  }
+
+  void _resumeAutoScroll() {
+    _startAutoScroll(_bannerCount);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final featuredAsync = ref.watch(featuredEventsProvider);
+    final bannersAsync = ref.watch(heroBannersProvider);
 
-    return featuredAsync.when(
-      data: (events) {
-        if (events.isEmpty) return const SizedBox.shrink();
+    return bannersAsync.when(
+      data: (banners) {
+        if (banners.isEmpty) return const SizedBox.shrink();
+
+        if (_bannerCount != banners.length) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _startAutoScroll(banners.length);
+          });
+        }
 
         return Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              height: 220,
+              height: 200,
               child: PageView.builder(
                 controller: _pageController,
                 onPageChanged: (index) {
                   _currentPage.value = index;
                 },
-                itemCount: events.length,
+                itemCount: banners.length,
                 itemBuilder: (context, index) {
-                  final event = events[index];
+                  final banner = banners[index];
                   return _HeroBannerCard(
-                    event: event,
+                    banner: banner,
                     autoFocus: index == 0,
+                    onInteractionStart: _pauseAutoScroll,
+                    onInteractionEnd: _resumeAutoScroll,
                   );
                 },
               ),
             ),
-            if (events.length > 1) ...[
+            if (banners.length > 1) ...[
               const SizedBox(height: 8),
               ValueListenableBuilder<int>(
                 valueListenable: _currentPage,
                 builder: (context, currentPage, _) {
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(events.length, (index) {
+                    children: List.generate(banners.length, (index) {
                       final bool active = currentPage == index;
-                      return Container(
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
                         margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: active ? 16 : 6,
+                        width: active ? 18 : 6,
                         height: 6,
                         decoration: BoxDecoration(
                           borderRadius: const BorderRadius.all(
@@ -485,21 +466,19 @@ class _HeroBannerState extends ConsumerState<_HeroBanner> {
   }
 }
 
-/// Individual hero banner card
-class _HeroBannerCard extends ConsumerStatefulWidget {
-  final SportEvent event;
+/// Individual hero banner card for ads and promotional images
+class _HeroBannerCard extends ConsumerWidget {
+  final HeroBannerItem banner;
   final bool autoFocus;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
+
   const _HeroBannerCard({
-    required this.event,
+    required this.banner,
     this.autoFocus = false,
+    this.onInteractionStart,
+    this.onInteractionEnd,
   });
-
-  @override
-  ConsumerState<_HeroBannerCard> createState() => _HeroBannerCardState();
-}
-
-class _HeroBannerCardState extends ConsumerState<_HeroBannerCard> {
-  bool _countdownDone = false;
 
   static const _cardRadius = BorderRadius.all(Radius.circular(20));
   static const _cardDecoration = BoxDecoration(
@@ -509,342 +488,149 @@ class _HeroBannerCardState extends ConsumerState<_HeroBannerCard> {
     ),
     boxShadow: [
       BoxShadow(
-        color: Color(0x1F000000),
+        color: Color(0x26000000),
         blurRadius: 10,
         offset: Offset(0, 4),
       ),
     ],
   );
 
-  void _onCountdownFinished() {
-    if (mounted) setState(() => _countdownDone = true);
-    ref.read(syncServiceProvider).sync();
-    ref.invalidate(eventsProvider);
+  Future<void> _handleTap(BuildContext context, WidgetRef ref) async {
+    if (banner.isExternalUrl) {
+      final uri = Uri.tryParse(banner.actionValue!);
+      if (uri != null) {
+        try {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (e) {
+          debugPrint('Error launching banner URL: $e');
+        }
+      }
+    } else if (banner.isChannelAction) {
+      if (context.mounted) {
+        context.push('/player/${banner.actionValue}');
+      }
+    }
   }
-
-  String _formatKickoff(DateTime time) {
-    final t = time.toLocal();
-    final h = t.hour;
-    final m = t.minute.toString().padLeft(2, '0');
-    final period = h >= 12 ? 'PM' : 'AM';
-    final displayHour = h % 12 == 0 ? 12 : h % 12;
-    final timeStr = '$displayHour:$m $period';
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final tomorrow = today.add(const Duration(days: 1));
-    final eventDay = DateTime(t.year, t.month, t.day);
-
-    if (eventDay == today) return 'TODAY, $timeStr';
-    if (eventDay == tomorrow) return 'TOMORROW, $timeStr';
-
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    return '${months[t.month - 1]} ${t.day}, $timeStr';
-  }
-
-  bool get _canWatch => widget.event.isLive || _countdownDone;
 
   @override
-  Widget build(BuildContext context) {
-    final event = widget.event;
-
-    void handleTap() {
-      if (!_canWatch) return;
-      EventStreamLauncher.launch(context, event);
-    }
-
+  Widget build(BuildContext context, WidgetRef ref) {
     return TvFocusable(
-      autoFocus: widget.autoFocus,
+      autoFocus: autoFocus,
       borderRadius: BorderRadius.circular(20),
-      onTap: handleTap,
+      onFocusChange: (hasFocus) {
+        if (hasFocus) {
+          onInteractionStart?.call();
+        } else {
+          onInteractionEnd?.call();
+        }
+      },
+      onTap: () => _handleTap(context, ref),
       child: GestureDetector(
-        onTap: handleTap,
+        onTapDown: (_) => onInteractionStart?.call(),
+        onTapUp: (_) => onInteractionEnd?.call(),
+        onTapCancel: () => onInteractionEnd?.call(),
+        onTap: () => _handleTap(context, ref),
         child: Padding(
-        padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 8),
-        child: DecoratedBox(
-          decoration: _cardDecoration,
-          child: ClipRRect(
-            borderRadius: _cardRadius,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (event.banner != null && event.banner!.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: event.banner!,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 400,
-                    fadeInDuration: const Duration(milliseconds: 200),
-                    placeholder: (context, url) => const ColoredBox(
+          padding: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 4),
+          child: DecoratedBox(
+            decoration: _cardDecoration,
+            child: ClipRRect(
+              borderRadius: _cardRadius,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Artwork Image
+                  if (banner.imageUrl.isNotEmpty)
+                    CachedNetworkImage(
+                      imageUrl: banner.imageUrl,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 600,
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      placeholder: (context, url) => const ColoredBox(
+                        color: GoPlayTheme.surfaceContainerHigh,
+                      ),
+                      errorWidget: (context, url, error) => const ColoredBox(
+                        color: GoPlayTheme.surfaceContainerHigh,
+                      ),
+                    )
+                  else
+                    const ColoredBox(
                       color: GoPlayTheme.surfaceContainerHigh,
                     ),
-                    errorWidget: (context, url, error) => const ColoredBox(
-                      color: GoPlayTheme.surfaceContainerHigh,
-                    ),
-                  ),
 
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0x40000000),
-                        Colors.transparent,
-                        Color(0x50000000),
-                      ],
+                  // Top & bottom gradient overlays for contrast (only when text/badge overlays are active)
+                  if (banner.hasOverlay)
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0x60000000),
+                            Colors.transparent,
+                            Color(0x85000000),
+                          ],
+                          stops: [0.0, 0.45, 1.0],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
 
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  right: 12,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
+                  // Top badge
+                  if (banner.showBadge && banner.badgeText != null && banner.badgeText!.isNotEmpty)
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.55),
+                          color: Colors.black.withValues(alpha: 0.65),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0x20FFFFFF), width: 0.5),
+                          border: Border.all(color: const Color(0x30FFFFFF), width: 0.5),
                         ),
                         child: Text(
-                          event.league.toUpperCase(),
+                          banner.badgeText!.toUpperCase(),
                           style: _kInterLeagueBadge,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (event.isLive || _countdownDone)
-                        const LiveBadge()
-                      else
-                        const _UpcomingBadge(),
-                    ],
-                  ),
-                ),
-
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: 68,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      color: Color(0xE616171A),
-                      border: Border(
-                        top: BorderSide(
-                          color: GoPlayTheme.cardBorder,
-                          width: 0.8,
-                        ),
-                      ),
                     ),
-                    padding: const EdgeInsets.only(left: 14, right: 14, top: 6, bottom: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      event.homeTeam.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: _kInterTeamName,
-                                    ),
-                                  ),
-                                  if (event.homeTeam.flag != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 6.0),
-                                      child: SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: ClipOval(
-                                          child: TeamFlagWidget(
-                                            flag: event.homeTeam.flag,
-                                            size: 16,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  const Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 6.0),
-                                    child: Text(
-                                      'vs',
-                                      style: _kInterVs,
-                                    ),
-                                  ),
-                                  Flexible(
-                                    child: Text(
-                                      event.awayTeam.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: _kInterTeamName,
-                                    ),
-                                  ),
-                                  if (event.awayTeam.flag != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 6.0),
-                                      child: SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: ClipOval(
-                                          child: TeamFlagWidget(
-                                            flag: event.awayTeam.flag,
-                                            size: 16,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 3),
-                              if (event.isLive || _countdownDone)
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 5,
-                                      height: 5,
-                                      decoration: const BoxDecoration(
-                                        color: GoPlayTheme.primary,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 5),
-                                    const Text(
-                                      'LIVE NOW',
-                                      style: _kInterLiveNow,
-                                    ),
-                                  ],
-                                )
-                              else
-                                Row(
-                                  children: [
-                                     const Icon(
-                                       Icons.calendar_today_rounded,
-                                       color: Colors.white70,
-                                       size: 12,
-                                     ),
-                                     const SizedBox(width: 5),
-                                     Flexible(
-                                       child: Text(
-                                         _formatKickoff(event.startTime),
-                                         style: _kInterKickoff,
-                                         maxLines: 1,
-                                         overflow: TextOverflow.ellipsis,
-                                       ),
-                                     ),
-                                  ],
-                                ),
+
+                  // Bottom Title Overlay
+                  if (banner.showTitle && banner.title != null && banner.title!.isNotEmpty)
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.85),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: _canWatch
-                              ? const _WatchButton(key: ValueKey('watch'))
-                              : _CountdownButton(
-                                  key: const ValueKey('countdown'),
-                                  startTime: event.startTime,
-                                  onFinished: _onCountdownFinished,
-                                ),
+                        padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+                        child: Text(
+                          banner.title!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.2,
+                          ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      ),
-    ),
-    );
-  }
-}
-
-// ─── Watch CTA Button ────────────────────────────────────────────────────────
-class _WatchButton extends StatelessWidget {
-  const _WatchButton({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: GoPlayTheme.primary,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x26C8FF00),
-            blurRadius: 6,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.play_arrow_rounded, color: Color(0xFF17181C), size: 14),
-          SizedBox(width: 4),
-          Text(
-            'WATCH',
-            style: _kInterWatch,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Countdown CTA Button ───────────────────────────────────────────────────
-class _CountdownButton extends StatelessWidget {
-  final DateTime startTime;
-  final VoidCallback onFinished;
-
-  const _CountdownButton({
-    super.key,
-    required this.startTime,
-    required this.onFinished,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2C2D31),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: GoPlayTheme.primary.withValues(alpha: 0.35),
-            width: 0.8,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.timer_outlined,
-              size: 11,
-              color: GoPlayTheme.primary.withValues(alpha: 0.8),
-            ),
-            const SizedBox(width: 4),
-            CountdownTimerWidget(
-              startTime: startTime,
-              onTimerFinished: onFinished,
-              style: _kInterCountdown,
-            ),
-          ],
         ),
       ),
     );
@@ -1145,54 +931,6 @@ class _HeroBannerSkeleton extends StatelessWidget {
   }
 }
 
-// â”€â”€â”€ _UpcomingBadge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-class _UpcomingBadge extends StatelessWidget {
-  const _UpcomingBadge();
-
-  static const _decoration = BoxDecoration(
-    color: Color(0x26C8FF00),
-    borderRadius: BorderRadius.all(Radius.circular(4)),
-    border: Border.fromBorderSide(
-      BorderSide(color: Color(0x50C8FF00), width: 0.5),
-    ),
-  );
-
-  static const _dotDecoration = BoxDecoration(
-    color: GoPlayTheme.primary,
-    shape: BoxShape.circle,
-  );
-
-  static const _labelStyle = TextStyle(
-    fontFamily: GoPlayType.family,
-    color: GoPlayTheme.primary,
-    fontSize: GoPlayType.xs,
-    fontWeight: FontWeight.w600,
-    height: GoPlayType.leadingFlat,
-    letterSpacing: GoPlayType.trackingMeta,
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: _decoration,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 5,
-              height: 5,
-              child: DecoratedBox(decoration: _dotDecoration),
-            ),
-            SizedBox(width: 5),
-            Text('UPCOMING', style: _labelStyle),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // â”€â”€â”€ _ChannelItem â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _ChannelItem extends StatelessWidget {

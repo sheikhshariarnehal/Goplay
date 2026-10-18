@@ -15,6 +15,7 @@ class AppConstants {
   static const String watchHistoryBox = 'watch_history_local';
   static const String favoritesBox = 'favorites_local';
   static const String announcementsBox = 'announcements_cache';
+  static const String heroBannersBox = 'hero_banners_cache';
 
   // App Info
   static const String appName = 'GoPlay';

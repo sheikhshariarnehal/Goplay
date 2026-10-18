@@ -88,6 +88,15 @@ class SyncService {
         debugPrint('SyncService: Announcements sync failed (non-fatal): $e');
       }
 
+      // 6. Sync hero banners (lightweight — always refresh on sync)
+      try {
+        final remoteHeroBanners = await supabase.getHeroBanners();
+        await cache.saveLocalHeroBanners(remoteHeroBanners);
+        _ref.invalidate(heroBannersProvider);
+      } catch (e) {
+        debugPrint('SyncService: Hero banners sync failed (non-fatal): $e');
+      }
+
       debugPrint('SyncService: Background sync check completed successfully.');
     } catch (e, stackTrace) {
       debugPrint('SyncService: Error occurred during synchronization: $e\n$stackTrace');

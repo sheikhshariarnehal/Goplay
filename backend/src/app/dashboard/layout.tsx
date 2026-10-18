@@ -7,7 +7,7 @@ import { useAuth } from '../../providers/auth-provider';
 import { createAdminSupabaseClient } from '../../utils/supabase';
 import {
   Layers, Tv, Calendar, Bell, Shield, LogOut,
-  ChevronRight, Activity, Menu, X, Search, Sparkles, List, Users, TrendingUp,
+  ChevronRight, Activity, Menu, X, Search, Sparkles, List, Users, TrendingUp, Image as ImageIcon,
 } from 'lucide-react';
 
 const navItems = [
@@ -16,6 +16,7 @@ const navItems = [
   { label: 'Channels', href: '/dashboard/channels', icon: Tv },
   { label: 'Trending', href: '/dashboard/trending', icon: TrendingUp },
   { label: 'Playlists', href: '/dashboard/playlists', icon: List },
+  { label: 'Hero Banners', href: '/dashboard/banners', icon: ImageIcon },
   { label: 'Sports Matches', href: '/dashboard/events', icon: Calendar },
   { label: 'Announcements', href: '/dashboard/announcements', icon: Bell },
   { label: 'Channel Monitor', href: '/admin/channel-monitor', icon: Shield },

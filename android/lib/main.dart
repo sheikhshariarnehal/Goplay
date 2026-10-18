@@ -84,6 +84,7 @@ Future<void> _initHive() async {
     AppConstants.watchHistoryBox,
     AppConstants.favoritesBox,
     AppConstants.announcementsBox,
+    AppConstants.heroBannersBox,
   ];
 
   for (final boxName in boxesToOpen) {
