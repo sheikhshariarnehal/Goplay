@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,11 +6,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
 import '../../core/typography.dart';
 import '../../models/category.dart';
-import '../../models/channel.dart';
 import '../../providers/app_providers.dart';
 import '../../providers/playz_providers.dart';
-import '../../services/channel_stream_launcher.dart';
 import '../../widgets/app_overflow_menu.dart';
+import '../../widgets/cards/channel_card.dart';
 import '../../widgets/tv_focus_wrapper.dart';
 
 /// Categories Screen matching the reference UI with GoPlay's dark theme & volt styling.
@@ -144,12 +144,39 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
     return 2; // 2-columns on standard mobile
   }
 
-  int _calculateChannelColumns(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    if (width >= 1200) return 7;
-    if (width >= 900) return 6;
-    if (width >= 600) return 5;
-    return 4; // 4-columns on standard mobile
+  double _calculateCategoryAspectRatio(int columns) {
+    if (columns >= 4) return 2.85;
+    if (columns == 3) return 2.75;
+    return 2.65; // Mobile 2-column cards: compact 66dp height
+  }
+
+  static const double _kGridSpacing = 8.0;
+  static const double _kGridEdgeInset = 12.0;
+
+  SliverGridDelegateWithFixedCrossAxisCount _buildChannelGridDelegate(
+    BuildContext context,
+    double crossAxisExtent,
+  ) {
+    final int cols;
+    if (crossAxisExtent >= 1180) {
+      cols = 6;
+    } else if (crossAxisExtent >= 880) {
+      cols = 5;
+    } else if (crossAxisExtent >= 580) {
+      cols = 4;
+    } else {
+      cols = 3;
+    }
+
+    final tileWidth = (crossAxisExtent - _kGridSpacing * (cols - 1)) / cols;
+    final tileHeight = math.max(tileWidth, ChannelCard.measureHeight(context));
+
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: cols,
+      childAspectRatio: tileWidth <= 0 ? 1.0 : tileWidth / tileHeight,
+      crossAxisSpacing: _kGridSpacing,
+      mainAxisSpacing: _kGridSpacing,
+    );
   }
 
   @override
@@ -158,23 +185,21 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
     final favoriteIds = ref.watch(favoriteChannelIdsProvider);
 
     return PopScope(
-      canPop: _selectedCategory == null && !_isCategorySearchOpen,
+      canPop: _selectedCategory == null &&
+          !_isCategorySearchOpen &&
+          !_filterFavoriteCategories,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) {
           if (_isChannelSearchOpen) {
-            setState(() {
-              _isChannelSearchOpen = false;
-              _channelSearchController.clear();
-              _channelSearchQuery = '';
-            });
+            _toggleChannelSearch();
+          } else if (_filterFavoriteChannels) {
+            _toggleChannelFavoritesFilter();
           } else if (_selectedCategory != null) {
             _goBackToCategories();
           } else if (_isCategorySearchOpen) {
-            setState(() {
-              _isCategorySearchOpen = false;
-              _categorySearchController.clear();
-              _categorySearchQuery = '';
-            });
+            _toggleCategorySearch();
+          } else if (_filterFavoriteCategories) {
+            _toggleCategoryFavoritesFilter();
           }
         }
       },
@@ -215,6 +240,9 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
     AsyncValue<List<Category>> categoriesAsync,
     Set<String> favoriteIds,
   ) {
+    final channelsByCategoryAsync = ref.watch(channelsByCategoryMapProvider);
+    final channelsMap = channelsByCategoryAsync.value;
+
     return Column(
       key: const ValueKey('categories_list_view'),
       children: [
@@ -231,16 +259,37 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                     .toList();
               }
 
+              // Favorites category filter
+              if (_filterFavoriteCategories) {
+                displayList = displayList.where((c) {
+                  final channels = channelsMap?[c.id] ??
+                      channelsMap?[c.name] ??
+                      channelsMap?[c.id.toLowerCase()];
+                  return channels != null &&
+                      channels.any((ch) => favoriteIds.contains(ch.id));
+                }).toList();
+              }
+
               if (displayList.isEmpty) {
+                final isFav = _filterFavoriteCategories;
+                final isSearch = _categorySearchQuery.isNotEmpty;
                 return _buildEmptyState(
-                  icon: Icons.category_outlined,
-                  message: _categorySearchQuery.isNotEmpty
+                  icon: isFav ? Icons.star_border_rounded : Icons.category_outlined,
+                  message: isSearch
                       ? 'No categories match "$_categorySearchQuery"'
-                      : 'No categories available',
-                  actionLabel: _categorySearchQuery.isNotEmpty ? 'Clear Search' : 'Refresh',
+                      : isFav
+                          ? 'No categories contain favorite channels'
+                          : 'No categories available',
+                  actionLabel: isSearch
+                      ? 'Clear Search'
+                      : isFav
+                          ? 'Show All Categories'
+                          : 'Refresh',
                   onAction: () {
-                    if (_categorySearchQuery.isNotEmpty) {
+                    if (isSearch) {
                       _categorySearchController.clear();
+                    } else if (isFav) {
+                      setState(() => _filterFavoriteCategories = false);
                     } else {
                       ref.invalidate(playzCategoriesProvider);
                     }
@@ -248,32 +297,33 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                 );
               }
 
+              final columns = _calculateCategoryColumns(context);
               return GridView.builder(
                 controller: _categoryScrollController,
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
+                cacheExtent: 350.0,
                 physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: _calculateCategoryColumns(context),
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: 2.35,
+                  crossAxisCount: columns,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                  childAspectRatio: _calculateCategoryAspectRatio(columns),
                 ),
                 itemCount: displayList.length,
                 itemBuilder: (context, index) {
                   final category = displayList[index];
+                  final count = channelsMap?[category.id]?.length ??
+                      channelsMap?[category.name]?.length ??
+                      channelsMap?[category.id.toLowerCase()]?.length;
                   return _CategoryPillCard(
                     category: category,
+                    channelCount: count,
                     onTap: () => _onCategoryTapped(category),
                   );
                 },
               );
             },
-            loading: () => const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                valueColor: AlwaysStoppedAnimation<Color>(GoPlayTheme.primary),
-              ),
-            ),
+            loading: () => _buildCategoriesSkeleton(context),
             error: (err, _) => _buildErrorState(
               'Failed to load categories',
               () => ref.invalidate(playzCategoriesProvider),
@@ -284,104 +334,131 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
     );
   }
 
-  Widget _buildCategoriesAppBar(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: const BoxDecoration(
-        color: GoPlayTheme.darkSurface,
-        border: Border(
-          bottom: BorderSide(color: Color(0x14FFFFFF), width: 1),
-        ),
+  Widget _buildCategoriesSkeleton(BuildContext context) {
+    final columns = _calculateCategoryColumns(context);
+    final cs = Theme.of(context).colorScheme;
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: _calculateCategoryAspectRatio(columns),
       ),
-      child: Row(
-        children: [
-          // Left Icon / Indicator
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: const Color(0xFF18181A),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0x1AFFFFFF)),
-            ),
-            child: const Icon(
-              Icons.category_rounded,
-              color: GoPlayTheme.primary,
-              size: 20,
-            ),
+      itemCount: columns * 6,
+      itemBuilder: (context, index) {
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(10),
           ),
-          const SizedBox(width: 12),
-
-          // Title or In-Page Search Field
-          Expanded(
-            child: _isCategorySearchOpen
-                ? TextField(
-                    controller: _categorySearchController,
-                    autofocus: true,
-                    style: const TextStyle(
-                      fontFamily: GoPlayType.family,
-                      fontSize: 15,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    cursorColor: GoPlayTheme.primary,
-                    decoration: InputDecoration(
-                      hintText: 'Search categories...',
-                      hintStyle: const TextStyle(
-                        fontFamily: GoPlayType.family,
-                        fontSize: 14,
-                        color: Color(0x75FFFFFF),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFF202226),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 70,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF222428),
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                      suffixIcon: _categorySearchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 18, color: Colors.white70),
-                              onPressed: () => _categorySearchController.clear(),
-                            )
-                          : null,
                     ),
-                  )
-                : const Text(
-                    'Categories',
-                    style: TextStyle(
-                      fontFamily: GoPlayType.family,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -0.4,
+                    const SizedBox(height: 6),
+                    Container(
+                      width: 45,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1D1F23),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+              ),
+            ],
           ),
+        );
+      },
+    );
+  }
 
-          // Search Toggle Button
-          IconButton(
-            icon: Icon(
-              _isCategorySearchOpen ? Icons.close_rounded : Icons.search_rounded,
-              color: _isCategorySearchOpen ? GoPlayTheme.primary : Colors.white,
-              size: 22,
+  Widget _buildCategoriesAppBar(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return AppBar(
+      primary: false,
+      automaticallyImplyLeading: false,
+      backgroundColor: cs.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      toolbarHeight: kToolbarHeight,
+      titleSpacing: (_filterFavoriteCategories || _isCategorySearchOpen) ? 0 : 16,
+      leading: _isCategorySearchOpen
+          ? IconButton(
+              tooltip: 'Close search',
+              icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface, size: 24),
+              onPressed: _toggleCategorySearch,
+            )
+          : _filterFavoriteCategories
+              ? IconButton(
+                  tooltip: 'Show all categories',
+                  icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface, size: 24),
+                  onPressed: _toggleCategoryFavoritesFilter,
+                )
+              : null,
+      title: _isCategorySearchOpen
+          ? _SearchField(
+              controller: _categorySearchController,
+              hintText: 'Search categories...',
+              onClear: () {
+                if (_categorySearchController.text.isEmpty) {
+                  _toggleCategorySearch();
+                } else {
+                  _categorySearchController.clear();
+                }
+              },
+            )
+          : Text(
+              _filterFavoriteCategories ? 'Favorites' : 'Categories',
+              style: theme.appBarTheme.titleTextStyle,
             ),
-            tooltip: _isCategorySearchOpen ? 'Close search' : 'Search categories',
-            onPressed: _toggleCategorySearch,
-          ),
-
-          // Favorites Filter Toggle
-          IconButton(
-            icon: Icon(
-              _filterFavoriteCategories ? Icons.star_rounded : Icons.star_outline_rounded,
-              color: _filterFavoriteCategories ? GoPlayTheme.primary : Colors.white,
-              size: 24,
-            ),
-            tooltip: _filterFavoriteCategories ? 'Show all categories' : 'Filter favorites',
-            onPressed: _toggleCategoryFavoritesFilter,
-          ),
-
-          // 3-Dots Action Sheet
-          const AppOverflowMenu(iconColor: Colors.white),
-        ],
-      ),
+      actions: _isCategorySearchOpen
+          ? null
+          : [
+              IconButton(
+                tooltip: 'Search categories',
+                icon: Icon(Icons.search_rounded, color: cs.onSurface, size: 22),
+                onPressed: _toggleCategorySearch,
+              ),
+              IconButton(
+                tooltip: _filterFavoriteCategories ? 'Show all categories' : 'Filter favorites',
+                icon: Icon(
+                  _filterFavoriteCategories ? Icons.star_rounded : Icons.star_outline_rounded,
+                  color: _filterFavoriteCategories ? GoPlayTheme.primary : cs.onSurface,
+                  size: 24,
+                ),
+                onPressed: _toggleCategoryFavoritesFilter,
+              ),
+              const AppOverflowMenu(iconColor: Colors.white),
+              const SizedBox(width: 8),
+            ],
     );
   }
 
@@ -443,38 +520,31 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                 );
               }
 
-              return GridView.builder(
-                controller: _channelScrollController,
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 80),
-                physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: _calculateChannelColumns(context),
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 0.82,
-                ),
-                itemCount: displayList.length,
-                itemBuilder: (context, index) {
-                  final ch = displayList[index];
-                  final isFav = favoriteIds.contains(ch.id);
-                  return _ChannelGridCard(
-                    channel: ch,
-                    isFavorite: isFav,
-                    scope: displayList,
-                    onToggleFavorite: () {
-                      HapticFeedback.selectionClick();
-                      ref.read(favoriteChannelIdsProvider.notifier).toggle(ch.id);
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final availableWidth = constraints.maxWidth - (_kGridEdgeInset * 2);
+                  final gridDelegate = _buildChannelGridDelegate(context, availableWidth);
+
+                  return GridView.builder(
+                    controller: _channelScrollController,
+                    padding: const EdgeInsets.fromLTRB(_kGridEdgeInset, 8, _kGridEdgeInset, 88),
+                    cacheExtent: 350.0,
+                    physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                    gridDelegate: gridDelegate,
+                    itemCount: displayList.length,
+                    itemBuilder: (context, index) {
+                      final ch = displayList[index];
+                      return ChannelCard(
+                        key: ValueKey(ch.id),
+                        channel: ch,
+                        scope: displayList,
+                      );
                     },
                   );
                 },
               );
             },
-            loading: () => const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                valueColor: AlwaysStoppedAnimation<Color>(GoPlayTheme.primary),
-              ),
-            ),
+            loading: () => _buildChannelsSkeleton(context),
             error: (err, _) => _buildErrorState(
               'Failed to load channels for ${category.name}',
               () => ref.invalidate(playzCategoryChannelsProvider(category)),
@@ -485,95 +555,91 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
     );
   }
 
+  Widget _buildChannelsSkeleton(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth - (_kGridEdgeInset * 2);
+        final gridDelegate = _buildChannelGridDelegate(context, availableWidth);
+
+        return GridView.builder(
+          padding: const EdgeInsets.fromLTRB(_kGridEdgeInset, 8, _kGridEdgeInset, 88),
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: gridDelegate,
+          itemCount: 12,
+          itemBuilder: (context, index) => const _ChannelShimmerCard(),
+        );
+      },
+    );
+  }
+
   Widget _buildChannelsAppBar(BuildContext context, Category category) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: const BoxDecoration(
-        color: GoPlayTheme.darkSurface,
-        border: Border(
-          bottom: BorderSide(color: Color(0x14FFFFFF), width: 1),
-        ),
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return AppBar(
+      primary: false,
+      automaticallyImplyLeading: false,
+      backgroundColor: cs.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      toolbarHeight: kToolbarHeight,
+      titleSpacing: 0,
+      leading: IconButton(
+        icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface, size: 24),
+        tooltip: _isChannelSearchOpen
+            ? 'Close search'
+            : _filterFavoriteChannels
+                ? 'Show all channels'
+                : 'Back to Categories',
+        onPressed: () {
+          if (_isChannelSearchOpen) {
+            _toggleChannelSearch();
+          } else if (_filterFavoriteChannels) {
+            _toggleChannelFavoritesFilter();
+          } else {
+            _goBackToCategories();
+          }
+        },
       ),
-      child: Row(
-        children: [
-          // Back button
-          IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
-            tooltip: 'Back to Categories',
-            onPressed: _goBackToCategories,
-          ),
-
-          // Title or In-Page Search Field
-          Expanded(
-            child: _isChannelSearchOpen
-                ? TextField(
-                    controller: _channelSearchController,
-                    autofocus: true,
-                    style: const TextStyle(
-                      fontFamily: GoPlayType.family,
-                      fontSize: 15,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    cursorColor: GoPlayTheme.primary,
-                    decoration: InputDecoration(
-                      hintText: 'Search in ${category.name}...',
-                      hintStyle: const TextStyle(
-                        fontFamily: GoPlayType.family,
-                        fontSize: 14,
-                        color: Color(0x75FFFFFF),
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                      suffixIcon: _channelSearchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 18, color: Colors.white70),
-                              onPressed: () => _channelSearchController.clear(),
-                            )
-                          : null,
-                    ),
-                  )
-                : Text(
-                    category.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: GoPlayType.family,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-          ),
-
-          // Search Toggle Button
-          IconButton(
-            icon: Icon(
-              _isChannelSearchOpen ? Icons.close_rounded : Icons.search_rounded,
-              color: _isChannelSearchOpen ? GoPlayTheme.primary : Colors.white,
-              size: 22,
+      title: _isChannelSearchOpen
+          ? _SearchField(
+              controller: _channelSearchController,
+              hintText: 'Search in ${category.name}...',
+              onClear: () {
+                if (_channelSearchController.text.isEmpty) {
+                  _toggleChannelSearch();
+                } else {
+                  _channelSearchController.clear();
+                }
+              },
+            )
+          : Text(
+              _filterFavoriteChannels ? 'Favorites • ${category.name}' : category.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.appBarTheme.titleTextStyle,
             ),
-            tooltip: _isChannelSearchOpen ? 'Close search' : 'Search channels',
-            onPressed: _toggleChannelSearch,
-          ),
-
-          // Star Favorites Filter Toggle
-          IconButton(
-            icon: Icon(
-              _filterFavoriteChannels ? Icons.star_rounded : Icons.star_outline_rounded,
-              color: _filterFavoriteChannels ? GoPlayTheme.primary : Colors.white,
-              size: 24,
-            ),
-            tooltip: _filterFavoriteChannels ? 'Show all channels' : 'Show favorites only',
-            onPressed: _toggleChannelFavoritesFilter,
-          ),
-
-          // 3-Dots Action Sheet
-          const AppOverflowMenu(iconColor: Colors.white),
-        ],
-      ),
+      actions: _isChannelSearchOpen
+          ? null
+          : [
+              IconButton(
+                tooltip: 'Search channels',
+                icon: Icon(Icons.search_rounded, color: cs.onSurface, size: 22),
+                onPressed: _toggleChannelSearch,
+              ),
+              IconButton(
+                tooltip: _filterFavoriteChannels ? 'Show all channels' : 'Filter favorites',
+                icon: Icon(
+                  _filterFavoriteChannels ? Icons.star_rounded : Icons.star_outline_rounded,
+                  color: _filterFavoriteChannels ? GoPlayTheme.primary : cs.onSurface,
+                  size: 24,
+                ),
+                onPressed: _toggleChannelFavoritesFilter,
+              ),
+              const AppOverflowMenu(iconColor: Colors.white),
+              const SizedBox(width: 8),
+            ],
     );
   }
 
@@ -676,223 +742,395 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
 }
 
 // ==========================================
-//    PILL CATEGORY CARD (2-COLUMN GRID)
+//           SEARCH FIELD COMPONENT
 // ==========================================
-class _CategoryPillCard extends StatelessWidget {
-  final Category category;
-  final VoidCallback onTap;
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hintText;
+  final VoidCallback onClear;
 
-  const _CategoryPillCard({
-    required this.category,
-    required this.onTap,
+  const _SearchField({
+    required this.controller,
+    required this.hintText,
+    required this.onClear,
   });
 
   @override
   Widget build(BuildContext context) {
-    return TvFocusable(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      focusedScale: 1.03,
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF16171A),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: const Color(0x1EFFFFFF),
-            width: 1.0,
+    final cs = Theme.of(context).colorScheme;
+    const radius = BorderRadius.all(Radius.circular(100));
+
+    return SizedBox(
+      height: 40,
+      child: TextField(
+        controller: controller,
+        autofocus: true,
+        textInputAction: TextInputAction.search,
+        cursorColor: cs.primary,
+        style: GoPlayType.body.copyWith(color: cs.onSurface),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: cs.surfaceContainerHigh,
+          contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          hintText: hintText,
+          hintStyle: GoPlayType.body.copyWith(color: cs.onSurfaceVariant),
+          isDense: true,
+          border: const OutlineInputBorder(
+            borderRadius: radius,
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: const OutlineInputBorder(
+            borderRadius: radius,
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderRadius: radius,
+            borderSide: BorderSide.none,
+          ),
+          prefixIcon: Icon(Icons.search_rounded, color: cs.onSurfaceVariant, size: 20),
+          suffixIcon: IconButton(
+            tooltip: 'Clear search',
+            icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant, size: 18),
+            onPressed: onClear,
           ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          children: [
-            // Circular Emblem Avatar on left
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF222428),
-                border: Border.all(
-                  color: const Color(0x28FFFFFF),
-                  width: 1.2,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x33000000),
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: category.iconUrl != null && category.iconUrl!.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: category.iconUrl!,
-                      fit: BoxFit.cover,
-                      errorWidget: (context, url, error) => _buildFallbackIcon(),
-                    )
-                  : _buildFallbackIcon(),
-            ),
-            const SizedBox(width: 10),
-
-            // Category Title on right
-            Expanded(
-              child: Text(
-                category.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: GoPlayType.family,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                  letterSpacing: -0.2,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFallbackIcon() {
-    return const Center(
-      child: Icon(
-        Icons.tv_rounded,
-        size: 20,
-        color: Color(0x88FFFFFF),
       ),
     );
   }
 }
 
 // ==========================================
-//    4-COLUMN CHANNEL CARD (CHANNELS GRID)
+//    PILL CATEGORY CARD (2-COLUMN GRID)
 // ==========================================
-class _ChannelGridCard extends StatelessWidget {
-  final Channel channel;
-  final bool isFavorite;
-  final List<Channel> scope;
-  final VoidCallback onToggleFavorite;
+class _CategoryPillCard extends StatelessWidget {
+  final Category category;
+  final int? channelCount;
+  final VoidCallback onTap;
 
-  const _ChannelGridCard({
-    required this.channel,
-    required this.isFavorite,
-    required this.scope,
-    required this.onToggleFavorite,
+  const _CategoryPillCard({
+    required this.category,
+    this.channelCount,
+    required this.onTap,
   });
-
-  void _open(BuildContext context) {
-    HapticFeedback.selectionClick();
-    ChannelStreamLauncher.launch(context, channel, scope: scope);
-  }
 
   @override
   Widget build(BuildContext context) {
+    final visuals = CategoryVisuals.resolve(category);
+    final count = channelCount;
+    final countText = (count != null && count > 0)
+        ? '$count ${count == 1 ? 'channel' : 'channels'}'
+        : null;
+
+    final cs = Theme.of(context).colorScheme;
+
     return TvFocusable(
-      onTap: () => _open(context),
-      onLongPress: onToggleFavorite,
-      borderRadius: BorderRadius.circular(12),
-      focusedScale: 1.05,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      focusedScale: 1.03,
+      semanticLabel: countText != null
+          ? '${category.name}, $countText'
+          : category.name,
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF16171A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0x1CFFFFFF),
-            width: 1.0,
-          ),
+          color: cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(10),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        child: Stack(
-          alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
           children: [
-            // Channel content: Logo plate + Name
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Circular Logo Plate
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF222428),
-                    border: Border.all(
-                      color: const Color(0x28FFFFFF),
-                      width: 1.2,
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x40000000),
-                        blurRadius: 5,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: channel.logo != null && channel.logo!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: channel.logo!,
-                          fit: BoxFit.cover,
-                          errorWidget: (context, url, error) => _buildFallbackLogo(),
-                        )
-                      : _buildFallbackLogo(),
-                ),
-                const SizedBox(height: 7),
+            // Avatar plate (40x40)
+            _buildAvatar(visuals),
+            const SizedBox(width: 10),
 
-                // Channel Name (max 2 lines, centered)
-                Text(
-                  channel.displayName,
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: GoPlayType.family,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFEDEDED),
-                    height: 1.15,
+            // Category Name and Channel Count
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    category.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: GoPlayType.family,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFF1F1F1),
+                      letterSpacing: -0.2,
+                      height: 1.2,
+                    ),
                   ),
-                ),
-              ],
+                  if (countText != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      countText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: GoPlayType.family,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0x8AFFFFFF),
+                        letterSpacing: -0.1,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
 
-            // Star indicator for favorites (top right)
-            if (isFavorite)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: const BoxDecoration(
-                    color: Color(0x33C8FF00),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.star_rounded,
-                    size: 13,
-                    color: GoPlayTheme.primary,
-                  ),
-                ),
-              ),
+            const SizedBox(width: 4),
+
+            // Subtle chevron indicator
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 16,
+              color: Color(0x2EFFFFFF),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFallbackLogo() {
+  Widget _buildAvatar(CategoryVisuals visuals) {
+    final hasIconUrl = category.iconUrl != null && category.iconUrl!.isNotEmpty;
+
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: visuals.gradientColors,
+        ),
+        border: Border.all(
+          color: const Color(0x24FFFFFF),
+          width: 1.0,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x28000000),
+            blurRadius: 4,
+            offset: Offset(0, 1.5),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: hasIconUrl
+          ? CachedNetworkImage(
+              imageUrl: category.iconUrl!,
+              fit: BoxFit.cover,
+              memCacheWidth: 96,
+              memCacheHeight: 96,
+              fadeInDuration: const Duration(milliseconds: 150),
+              placeholder: (context, url) => _buildFallbackVisual(visuals),
+              errorWidget: (context, url, error) => _buildFallbackVisual(visuals),
+            )
+          : _buildFallbackVisual(visuals),
+    );
+  }
+
+  Widget _buildFallbackVisual(CategoryVisuals visuals) {
+    if (visuals.isBangladesh) {
+      return Center(
+        child: Container(
+          width: 17,
+          height: 17,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFFF42A41),
+          ),
+        ),
+      );
+    }
+
     return Center(
-      child: Text(
-        channel.initials,
-        style: const TextStyle(
-          fontFamily: GoPlayType.family,
-          fontSize: 13,
-          fontWeight: FontWeight.w800,
-          color: Color(0xAAFFFFFF),
+      child: Icon(
+        visuals.icon,
+        size: 19,
+        color: visuals.accentColor,
+      ),
+    );
+  }
+}
+
+// ==========================================
+//    CATEGORY VISUALS RESOLVER
+// ==========================================
+class CategoryVisuals {
+  final IconData icon;
+  final List<Color> gradientColors;
+  final Color accentColor;
+  final bool isBangladesh;
+
+  const CategoryVisuals({
+    required this.icon,
+    required this.gradientColors,
+    required this.accentColor,
+    this.isBangladesh = false,
+  });
+
+  static CategoryVisuals resolve(Category category) {
+    final key = '${category.id} ${category.name}'.toLowerCase();
+
+    if (key.contains('bangla') || key.contains('bangladesh') || key.contains('bd')) {
+      return const CategoryVisuals(
+        icon: Icons.flag_rounded,
+        gradientColors: [Color(0xFF006A4E), Color(0xFF004D38)],
+        accentColor: Color(0xFFF42A41),
+        isBangladesh: true,
+      );
+    }
+    if (key.contains('kids') || key.contains('cartoon') || key.contains('child') || key.contains('animation')) {
+      return const CategoryVisuals(
+        icon: Icons.child_care_rounded,
+        gradientColors: [Color(0xFFE65100), Color(0xFFFF6D00)],
+        accentColor: Color(0xFFFFD54F),
+      );
+    }
+    if (key.contains('kolkata') || key.contains('calcutta')) {
+      return const CategoryVisuals(
+        icon: Icons.theater_comedy_rounded,
+        gradientColors: [Color(0xFFBF360C), Color(0xFFD84315)],
+        accentColor: Color(0xFFFF8A65),
+      );
+    }
+    if (key.contains('sports') || key.contains('sport') || key.contains('cricket') || key.contains('football')) {
+      return const CategoryVisuals(
+        icon: Icons.sports_soccer_rounded,
+        gradientColors: [Color(0xFF1B5E20), Color(0xFF00796B)],
+        accentColor: GoPlayTheme.primary,
+      );
+    }
+    if (key.contains('hindi') || key.contains('bollywood')) {
+      return const CategoryVisuals(
+        icon: Icons.movie_filter_rounded,
+        gradientColors: [Color(0xFF4A148C), Color(0xFF7B1FA2)],
+        accentColor: Color(0xFFFFB300),
+      );
+    }
+    if (key.contains('doc') || key.contains('nature') || key.contains('earth') || key.contains('discovery') || key.contains('geo')) {
+      return const CategoryVisuals(
+        icon: Icons.public_rounded,
+        gradientColors: [Color(0xFF004D40), Color(0xFF00838F)],
+        accentColor: Color(0xFF4DD0E1),
+      );
+    }
+    if (key.contains('islam') || key.contains('quran') || key.contains('deen') || key.contains('makkah')) {
+      return const CategoryVisuals(
+        icon: Icons.brightness_3_rounded,
+        gradientColors: [Color(0xFF004D40), Color(0xFF00695C)],
+        accentColor: Color(0xFFFFD54F),
+      );
+    }
+    if (key.contains('music') || key.contains('song') || key.contains('audio')) {
+      return const CategoryVisuals(
+        icon: Icons.music_note_rounded,
+        gradientColors: [Color(0xFF880E4F), Color(0xFFC2185B)],
+        accentColor: Color(0xFFFF4081),
+      );
+    }
+    if (key.contains('news') || key.contains('khobor') || key.contains('headline')) {
+      return const CategoryVisuals(
+        icon: Icons.newspaper_rounded,
+        gradientColors: [Color(0xFF8E0000), Color(0xFFC62828)],
+        accentColor: Color(0xFFFF5252),
+      );
+    }
+    if (key.contains('movie') || key.contains('cinema') || key.contains('film')) {
+      return const CategoryVisuals(
+        icon: Icons.movie_creation_rounded,
+        gradientColors: [Color(0xFFBF360C), Color(0xFFE65100)],
+        accentColor: Color(0xFFFFB74D),
+      );
+    }
+    if (key.contains('entertainment') || key.contains('natok') || key.contains('drama')) {
+      return const CategoryVisuals(
+        icon: Icons.auto_awesome_rounded,
+        gradientColors: [Color(0xFF311B92), Color(0xFF512DA8)],
+        accentColor: Color(0xFFB388FF),
+      );
+    }
+    if (key.contains('info')) {
+      return const CategoryVisuals(
+        icon: Icons.lightbulb_rounded,
+        gradientColors: [Color(0xFF01579B), Color(0xFF0277BD)],
+        accentColor: Color(0xFF40C4FF),
+      );
+    }
+    if (key.contains('radio')) {
+      return const CategoryVisuals(
+        icon: Icons.radio_rounded,
+        gradientColors: [Color(0xFFE64A19), Color(0xFFF57C00)],
+        accentColor: Color(0xFFFFAB40),
+      );
+    }
+    if (key.contains('indian') || key.contains('india')) {
+      return const CategoryVisuals(
+        icon: Icons.live_tv_rounded,
+        gradientColors: [Color(0xFFE65100), Color(0xFF1B5E20)],
+        accentColor: Color(0xFFFF9933),
+      );
+    }
+    if (key.contains('pakistan') || key.contains('pk')) {
+      return const CategoryVisuals(
+        icon: Icons.star_rounded,
+        gradientColors: [Color(0xFF002811), Color(0xFF01411C)],
+        accentColor: Colors.white,
+      );
+    }
+    if (key.contains('nepal')) {
+      return const CategoryVisuals(
+        icon: Icons.landscape_rounded,
+        gradientColors: [Color(0xFF003893), Color(0xFFDC143C)],
+        accentColor: Colors.white,
+      );
+    }
+    if (key.contains('ayna') || key.contains('ott') || key.contains('tvlink') || key.contains('iptv')) {
+      return const CategoryVisuals(
+        icon: Icons.stream_rounded,
+        gradientColors: [Color(0xFF192227), Color(0xFF263238)],
+        accentColor: GoPlayTheme.primary,
+      );
+    }
+
+    return const CategoryVisuals(
+      icon: Icons.category_rounded,
+      gradientColors: [Color(0xFF181A1E), Color(0xFF23252B)],
+      accentColor: GoPlayTheme.primary,
+    );
+  }
+}
+
+// ==========================================
+//    CHANNEL SHIMMER LOADING SKELETON
+// ==========================================
+class _ChannelShimmerCard extends StatelessWidget {
+  const _ChannelShimmerCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh,
+        borderRadius: const BorderRadius.all(Radius.circular(10)),
+      ),
+      child: Center(
+        child: SizedBox(
+          width: 54,
+          height: 54,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: cs.onSurface.withValues(alpha: 0.06),
+              shape: BoxShape.circle,
+            ),
+          ),
         ),
       ),
     );
