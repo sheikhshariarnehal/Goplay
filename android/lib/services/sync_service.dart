@@ -73,8 +73,32 @@ class SyncService {
         debugPrint('SyncService: Direct events sync non-fatal error: $e');
       }
 
-      // 4. Invalidate channels/categories providers if anything changed
-      if (channelsUpdated && localChannelsVer != null) {
+      // 4. Synchronize Direct Categories (Bangla, India, Kids) from pabbdyzone.shop API
+      try {
+        debugPrint('SyncService: Syncing direct categories (Bangla, India, Kids)...');
+        bool directUpdated = false;
+        for (final entry in directCategoryEndpoints.entries) {
+          final catId = entry.key;
+          final endpoint = entry.value;
+          final channels = await StreamDecryptor.fetchCategoryChannels(
+            endpoint: endpoint,
+            categoryId: catId,
+          );
+          if (channels.isNotEmpty) {
+            await cache.saveDirectCategoryChannels(catId, channels);
+            directUpdated = true;
+          }
+        }
+        if (directUpdated) {
+          channelsUpdated = true;
+          debugPrint('SyncService: Direct categories synchronized successfully.');
+        }
+      } catch (e) {
+        debugPrint('SyncService: Direct categories sync non-fatal error: $e');
+      }
+
+      // 5. Invalidate channels/categories providers if anything changed
+      if (channelsUpdated) {
         debugPrint('SyncService: Invalidating channels and categories providers...');
         _ref.invalidate(channelsProvider);
         _ref.invalidate(categoriesProvider);

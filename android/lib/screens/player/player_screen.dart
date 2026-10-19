@@ -11,6 +11,7 @@ import '../../providers/app_providers.dart';
 import '../../models/channel.dart';
 import '../../widgets/player/channel_video_player.dart';
 import '../../widgets/tv_focus_wrapper.dart';
+import '../../services/stream_decryptor.dart';
 
 // ─── Pre-cached top-level constants — zero per-frame allocations ─
 
@@ -199,6 +200,8 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   late String _currentChannelId;
+  List<Channel> _currentChannelServers = [];
+  int _activeServerIndex = 0;
   bool _controlsVisible = true;
   bool _isFullViewMode = false;
   Timer? _controlsTimer;
@@ -215,11 +218,60 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   // Exposed to the inner ChannelVideoPlayerNative so it can call
   // _channelPanelFocusScope.requestFocus() when D-Pad Right is pressed.
   bool _channelPanelHasFocus = false;
+  List<Channel> _resolvedDynamicChannels = [];
+  bool _isResolvingStream = false;
+
+  Future<void> _selectChannel(String id, List<Channel> allChannels) async {
+    final candidate = allChannels.cast<Channel?>().firstWhere(
+      (c) => c?.id == id,
+      orElse: () => null,
+    );
+    if (candidate != null &&
+        (candidate.streamUrl.startsWith('pro/') || candidate.streamUrl.contains('.txt'))) {
+      if (mounted) setState(() => _isResolvingStream = true);
+      try {
+        final streams = await StreamDecryptor.fetchChannelStreams(
+          linksPath: candidate.streamUrl,
+          channelId: candidate.id,
+          channelName: candidate.name,
+          category: candidate.category,
+          logo: candidate.logo,
+        );
+        if (streams.isNotEmpty && mounted) {
+          setState(() {
+            _isResolvingStream = false;
+            _resolvedDynamicChannels = [
+              ..._resolvedDynamicChannels.where((c) => !c.id.startsWith('${candidate.id}_')),
+              ...streams,
+            ];
+            _currentChannelId = candidate.id;
+            _currentChannelServers = streams;
+            _activeServerIndex = 0;
+          });
+          _startControlsTimer();
+          return;
+        }
+      } catch (_) {}
+      if (mounted) setState(() => _isResolvingStream = false);
+    }
+    if (mounted) {
+      setState(() {
+        _currentChannelId = id;
+        _currentChannelServers = [];
+        _activeServerIndex = 0;
+      });
+      _startControlsTimer();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _currentChannelId = widget.channelId;
+    if (widget.dynamicChannels != null && widget.dynamicChannels!.isNotEmpty) {
+      _currentChannelServers = List<Channel>.from(widget.dynamicChannels!);
+      _activeServerIndex = 0;
+    }
     _startControlsTimer();
 
     // Keep screen awake while player is active
@@ -458,7 +510,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               final allChannels = [
                 ...channels,
                 if (widget.dynamicChannels != null) ...widget.dynamicChannels!,
+                ..._resolvedDynamicChannels,
               ];
+
+              if (_isResolvingStream) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: GoPlayTheme.primary,
+                    strokeWidth: 2,
+                  ),
+                );
+              }
 
               final channel = allChannels.cast<Channel?>().firstWhere(
                 (c) => c?.id == _currentChannelId,
@@ -474,6 +536,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 );
               }
 
+              // Auto-resolve encrypted stream if opened directly
+              if ((channel.streamUrl.startsWith('pro/') || channel.streamUrl.contains('.txt')) && _currentChannelServers.isEmpty) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _selectChannel(channel.id, allChannels);
+                });
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: GoPlayTheme.primary,
+                    strokeWidth: 2,
+                  ),
+                );
+              }
+
+              final currentPlayChannel = (_currentChannelServers.isNotEmpty &&
+                      _activeServerIndex < _currentChannelServers.length)
+                  ? _currentChannelServers[_activeServerIndex]
+                  : channel;
+
               _addToHistory(channel);
 
               // Find related channels to enable prev/next buttons
@@ -486,7 +566,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                         .whereType<Channel>()
                         .toList()
                   : allChannels
-                        .where((c) => c.category == channel.category)
+                        .where((c) => c.category == channel.category && !c.id.contains('_server_'))
                         .toList();
 
               final currentIndex = relatedChannels.indexWhere(
@@ -502,21 +582,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   : null;
 
               final onPrev = prevChannel != null
-                  ? () {
-                      setState(() {
-                        _currentChannelId = prevChannel.id;
-                      });
-                      _startControlsTimer();
-                    }
+                  ? () => _selectChannel(prevChannel.id, allChannels)
                   : null;
 
               final onNext = nextChannel != null
-                  ? () {
-                      setState(() {
-                        _currentChannelId = nextChannel.id;
-                      });
-                      _startControlsTimer();
-                    }
+                  ? () => _selectChannel(nextChannel.id, allChannels)
                   : null;
 
               // WIDESCREEN / TV RESPONSIVE SPLIT LAYOUT (NON-FULLSCREEN)
@@ -527,30 +597,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     Expanded(
                       flex: 7,
                       child: _PlayerContainer(
-                        channel: channel,
+                        channel: currentPlayChannel,
+                        servers: _currentChannelServers.length > 1 ? _currentChannelServers : null,
+                        activeServerIndex: _activeServerIndex,
+                        onServerSelected: (index) {
+                          setState(() => _activeServerIndex = index);
+                        },
                         isFullscreen: false,
                         controlsVisible: _controlsVisible,
                         onTap: _onPlayerTap,
                         onFullscreenToggle: _toggleFullscreen,
                         showBackButton: true,
-                        topBar: (widget.eventChannels != null && widget.eventChannels!.length > 1)
-                            ? _FullscreenTopBar(
-                                category: channel.category ?? '',
-                                currentChannelId: channel.id,
-                                isFullscreen: false,
-                                onBackPressed: () => Navigator.of(context).pop(),
-                                onChannelSelected: (id) {
-                                  setState(() => _currentChannelId = id);
-                                  _startControlsTimer();
-                                },
-                                eventChannels: widget.eventChannels,
-                                dynamicChannels: widget.dynamicChannels,
-                                onFocusDown: () {
-                                  _playPauseFocusNode.requestFocus();
-                                },
-                                onInteract: _onPlayerInteract,
-                              )
-                            : null,
+                        topBar: _FullscreenTopBar(
+                          category: channel.category ?? '',
+                          currentChannelId: channel.id,
+                          isFullscreen: false,
+                          onBackPressed: () => Navigator.of(context).pop(),
+                          onChannelSelected: (id) => _selectChannel(id, allChannels),
+                          eventChannels: widget.eventChannels,
+                          dynamicChannels: widget.dynamicChannels,
+                          onFocusDown: () {
+                            _playPauseFocusNode.requestFocus();
+                          },
+                          onInteract: _onPlayerInteract,
+                        ),
                         onPreviousChannel: onPrev,
                         onNextChannel: onNext,
                         onInteract: _onPlayerInteract,
@@ -603,19 +673,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  if (_currentChannelServers.length > 1)
+                                    _ServerBadgesRow(
+                                      servers: _currentChannelServers,
+                                      activeServerIndex: _activeServerIndex,
+                                      onServerSelected: (index) {
+                                        setState(() => _activeServerIndex = index);
+                                      },
+                                    ),
                                   const _SectionLabel(text: 'SWITCH CHANNEL'),
                                   Expanded(
                                     child: _RelatedChannelsList(
                                       category: channel.category ?? '',
                                       currentChannelId: channel.id,
                                       isScrollable: true,
-                                      onChannelSelected: (id) {
-                                        setState(() => _currentChannelId = id);
+                                      onChannelSelected: (id) async {
+                                        await _selectChannel(id, allChannels);
                                         // Return focus to player after switching channel
                                         if (isTv) _focusPlayer();
                                       },
                                       eventChannels: widget.eventChannels,
-                                      dynamicChannels: widget.dynamicChannels,
+                                      dynamicChannels: [
+                                        if (widget.dynamicChannels != null) ...widget.dynamicChannels!,
+                                        ..._resolvedDynamicChannels,
+                                      ],
                                       panelHasFocus: _channelPanelHasFocus && isTv,
                                     ),
                                   ),
@@ -651,6 +732,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  if (_currentChannelServers.length > 1)
+                                    _ServerBadgesRow(
+                                      servers: _currentChannelServers,
+                                      activeServerIndex: _activeServerIndex,
+                                      onServerSelected: (index) {
+                                        setState(() => _activeServerIndex = index);
+                                      },
+                                    ),
                                   const _SectionLabel(text: 'SWITCH CHANNEL'),
                                   Expanded(
                                     child: _RelatedChannelsList(
@@ -658,9 +747,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                       currentChannelId: channel.id,
                                       isScrollable: true,
                                       onChannelSelected: (id) =>
-                                          setState(() => _currentChannelId = id),
+                                          _selectChannel(id, allChannels),
                                       eventChannels: widget.eventChannels,
-                                      dynamicChannels: widget.dynamicChannels,
+                                      dynamicChannels: [
+                                        if (widget.dynamicChannels != null) ...widget.dynamicChannels!,
+                                        ..._resolvedDynamicChannels,
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -679,30 +771,36 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     right: 0,
                     height: isFullscreen ? mq.size.height : responsivePlayerHeight,
                     child: _PlayerContainer(
-                      channel: channel,
+                      channel: currentPlayChannel,
+                      servers: _currentChannelServers.length > 1 ? _currentChannelServers : null,
+                      activeServerIndex: _activeServerIndex,
+                      onServerSelected: (index) {
+                        setState(() => _activeServerIndex = index);
+                      },
                       isFullscreen: isFullscreen,
                       controlsVisible: _controlsVisible,
                       onTap: _onPlayerTap,
                       onFullscreenToggle: _toggleFullscreen,
-                      showBackButton: false,
+                      showBackButton: !isFullscreen,
                       onPreviousChannel: onPrev,
                       onNextChannel: onNext,
                       onInteract: _onPlayerInteract,
                       height: responsivePlayerHeight,
-                      topBar: (isFullscreen || (widget.eventChannels != null && widget.eventChannels!.length > 1))
+                      topBar: isFullscreen
                           ? _FullscreenTopBar(
                               category: channel.category ?? '',
                               currentChannelId: channel.id,
-                              isFullscreen: isFullscreen,
-                              onBackPressed: (widget.forceFullscreen || !isFullscreen)
+                              isFullscreen: true,
+                              onBackPressed: widget.forceFullscreen
                                   ? () => Navigator.of(context).pop()
                                   : _toggleFullscreen,
-                              onChannelSelected: (id) {
-                                setState(() => _currentChannelId = id);
-                                _startControlsTimer();
-                              },
+                              onChannelSelected: (id) =>
+                                  _selectChannel(id, allChannels),
                               eventChannels: widget.eventChannels,
-                              dynamicChannels: widget.dynamicChannels,
+                              dynamicChannels: [
+                                if (widget.dynamicChannels != null) ...widget.dynamicChannels!,
+                                ..._resolvedDynamicChannels,
+                              ],
                               onFocusDown: () {
                                 _playPauseFocusNode.requestFocus();
                               },
@@ -739,6 +837,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
 class _PlayerContainer extends StatelessWidget {
   final Channel channel;
+  final List<Channel>? servers;
+  final int activeServerIndex;
+  final ValueChanged<int>? onServerSelected;
   final bool isFullscreen;
   final double? height;
   final bool controlsVisible;
@@ -756,6 +857,9 @@ class _PlayerContainer extends StatelessWidget {
 
   const _PlayerContainer({
     required this.channel,
+    this.servers,
+    this.activeServerIndex = 0,
+    this.onServerSelected,
     required this.isFullscreen,
     this.height,
     required this.controlsVisible,
@@ -798,6 +902,9 @@ class _PlayerContainer extends StatelessWidget {
                 onFocusChannelPanel: onFocusChannelPanel,
                 isTvDevice: isTvDevice,
                 playPauseFocusNode: playPauseFocusNode,
+                servers: servers,
+                activeServerIndex: activeServerIndex,
+                onServerSelected: onServerSelected,
               ),
             ),
 
@@ -864,6 +971,88 @@ class _BackButton extends StatelessWidget {
       iconSize: 24,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
+    );
+  }
+}
+
+// ─── Stream Server Filter Chips (Matches Homepage Today's Matches category chips) ──
+
+const _kServerChipSelected = TextStyle(
+  fontFamily: GoPlayType.family,
+  color: Color(0xFF0F0F0F),
+  fontSize: GoPlayType.sm,
+  fontWeight: FontWeight.w700,
+  height: GoPlayType.leadingSnug,
+);
+
+const _kServerChipUnselected = TextStyle(
+  fontFamily: GoPlayType.family,
+  color: Colors.white,
+  fontSize: GoPlayType.sm,
+  fontWeight: FontWeight.w500,
+  height: GoPlayType.leadingSnug,
+);
+
+class _ServerBadgesRow extends StatelessWidget {
+  final List<Channel> servers;
+  final int activeServerIndex;
+  final ValueChanged<int> onServerSelected;
+
+  const _ServerBadgesRow({
+    required this.servers,
+    required this.activeServerIndex,
+    required this.onServerSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      child: SizedBox(
+        height: 32,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemCount: servers.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final s = servers[index];
+            final isSelected = index == activeServerIndex;
+            final name = s.name.isNotEmpty ? s.name : 'Server ${index + 1}';
+
+            return TvFocusable(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onServerSelected(index);
+              },
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  onServerSelected(index);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? GoPlayTheme.primary
+                        : const Color(0xFF272727),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(
+                    child: Text(
+                      name,
+                      style: isSelected ? _kServerChipSelected : _kServerChipUnselected,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -1004,7 +1193,7 @@ class _RelatedChannelsListState extends ConsumerState<_RelatedChannelsList> {
               .whereType<Channel>()
               .toList();
         } else {
-          related = allChannels.where((c) => c.category == widget.category).toList();
+          related = allChannels.where((c) => c.category == widget.category && !c.id.contains('_server_')).toList();
         }
 
         if (related.isEmpty) {
@@ -1338,7 +1527,7 @@ class _FullscreenTopBar extends ConsumerWidget {
                             .toList();
                       } else {
                         related = allChannels
-                            .where((c) => c.category == category)
+                            .where((c) => c.category == category && !c.id.contains('_server_'))
                             .toList();
                       }
                       if (related.isEmpty) return const SizedBox.shrink();

@@ -18,6 +18,11 @@ abstract class ChannelVideoPlayer extends StatefulWidget {
   final bool isTvDevice;
   final FocusNode? playPauseFocusNode;
 
+  /// Optional multiple stream servers for the current channel.
+  final List<Channel>? servers;
+  final int activeServerIndex;
+  final ValueChanged<int>? onServerSelected;
+
   const ChannelVideoPlayer({
     super.key,
     required this.channel,
@@ -31,6 +36,9 @@ abstract class ChannelVideoPlayer extends StatefulWidget {
     this.onFocusChannelPanel,
     this.isTvDevice = false,
     this.playPauseFocusNode,
+    this.servers,
+    this.activeServerIndex = 0,
+    this.onServerSelected,
   });
 
   static Widget create({
@@ -45,6 +53,9 @@ abstract class ChannelVideoPlayer extends StatefulWidget {
     VoidCallback? onFocusChannelPanel,
     bool isTvDevice = false,
     FocusNode? playPauseFocusNode,
+    List<Channel>? servers,
+    int activeServerIndex = 0,
+    ValueChanged<int>? onServerSelected,
   }) {
     return getChannelVideoPlayer(
       channel: channel,
@@ -58,6 +69,9 @@ abstract class ChannelVideoPlayer extends StatefulWidget {
       onFocusChannelPanel: onFocusChannelPanel,
       isTvDevice: isTvDevice,
       playPauseFocusNode: playPauseFocusNode,
+      servers: servers,
+      activeServerIndex: activeServerIndex,
+      onServerSelected: onServerSelected,
     );
   }
 }

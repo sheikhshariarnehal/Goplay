@@ -24,6 +24,9 @@ class CacheService {
   List<Announcement>? _announcementsMemo;
   List<HeroBannerItem>? _heroBannersMemo;
   Set<String>? _favoritesMemo;
+  Map<String, List<Channel>>? _directCategoryChannelsMemo;
+
+  static const List<String> directCategoryIds = ['bangla', 'kolkata', 'kids'];
 
   /// Drops every memoized decode. Used after a cache wipe.
   void invalidateMemo() {
@@ -33,6 +36,7 @@ class CacheService {
     _announcementsMemo = null;
     _heroBannersMemo = null;
     _favoritesMemo = null;
+    _directCategoryChannelsMemo = null;
   }
 
   /// Reads a Hive box without throwing when the box failed to open at startup.
@@ -85,6 +89,37 @@ class CacheService {
     final box = _boxOrNull(AppConstants.channelsBox);
     if (box == null) return;
     await box.put('channels', channels.map((c) => c.toJson()).toList());
+  }
+
+  // ─── Direct Category Channels (Bangla, India, Kids) ──────────
+  List<Channel> getDirectCategoryChannels(String categoryId) {
+    _directCategoryChannelsMemo ??= {};
+    if (_directCategoryChannelsMemo!.containsKey(categoryId)) {
+      return _directCategoryChannelsMemo![categoryId]!;
+    }
+    final channels = _decodeList(
+      AppConstants.channelsBox,
+      'direct_channels_$categoryId',
+      Channel.fromJson,
+    );
+    _directCategoryChannelsMemo![categoryId] = channels;
+    return channels;
+  }
+
+  Future<void> saveDirectCategoryChannels(String categoryId, List<Channel> channels) async {
+    _directCategoryChannelsMemo ??= {};
+    _directCategoryChannelsMemo![categoryId] = List<Channel>.unmodifiable(channels);
+    final box = _boxOrNull(AppConstants.channelsBox);
+    if (box == null) return;
+    await box.put('direct_channels_$categoryId', channels.map((c) => c.toJson()).toList());
+  }
+
+  List<Channel> getAllDirectChannels() {
+    final list = <Channel>[];
+    for (final catId in directCategoryIds) {
+      list.addAll(getDirectCategoryChannels(catId));
+    }
+    return list;
   }
 
   // ─── Events ─────────────────────────────────────────────────

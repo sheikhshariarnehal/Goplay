@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
 import '../../core/typography.dart';
 import '../../models/channel.dart';
 import '../../providers/app_providers.dart';
+import '../../services/channel_stream_launcher.dart';
 import '../tv_focus_wrapper.dart';
 
 /// Logical height of the card's fixed (non-text) content: vertical padding,
@@ -62,18 +62,7 @@ class ChannelCard extends ConsumerWidget {
   }
 
   void _open(BuildContext context) {
-    final ids = scope;
-    if (ids == null || ids.length < 2) {
-      // Nothing to switch between — let the player use its category fallback.
-      context.push('/player/${channel.id}');
-      return;
-    }
-    context.push(
-      '/player/${channel.id}',
-      extra: {
-        'eventChannels': ids.map((c) => c.id).toList(growable: false),
-      },
-    );
+    ChannelStreamLauncher.launch(context, channel, scope: scope);
   }
 
   @override

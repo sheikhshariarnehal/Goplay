@@ -38,6 +38,37 @@ final appSyncProvider = FutureProvider<void>((ref) async {
   await syncService.sync();
 });
 
+// ─── Direct Categories Definition ─────────────────────────────
+const List<Category> defaultDirectCategories = [
+  Category(
+    id: 'bangla',
+    name: 'Bangla',
+    iconUrl: 'https://assets-playztv.pages.dev/category/bn.png',
+    sortOrder: -3,
+    active: true,
+  ),
+  Category(
+    id: 'kolkata',
+    name: 'Kolkata',
+    iconUrl: 'https://assets-playztv.pages.dev/category/kolkata.jpg',
+    sortOrder: -2,
+    active: true,
+  ),
+  Category(
+    id: 'kids',
+    name: 'Kids',
+    iconUrl: 'https://assets-playztv.pages.dev/category/kids.jpg',
+    sortOrder: -1,
+    active: true,
+  ),
+];
+
+const Map<String, String> directCategoryEndpoints = {
+  'bangla': 'channels/Qk4xNzY3MDIzMTU1NzMy.txt',
+  'kolkata': 'channels/S29sa2F0YTE3NjcwMDgwNjY5MDg.txt',
+  'kids': 'channels/S2lkczE3NjcwMDgyMjAzNzM.txt',
+};
+
 // ─── Channels ─────────────────────────────────────────────────
 final channelsProvider = FutureProvider<List<Channel>>((ref) async {
   final cache = ref.watch(cacheServiceProvider);
@@ -55,11 +86,16 @@ final channelsProvider = FutureProvider<List<Channel>>((ref) async {
   // Filter channels to only show those that belong to active categories (or have no category)
   final localCategories = cache.getLocalCategories();
   final activeCategoryIds = localCategories.map((c) => c.id).toSet();
+  activeCategoryIds.addAll(CacheService.directCategoryIds);
 
-  return channelsList.where((ch) {
+  final filteredChannels = channelsList.where((ch) {
     final cat = ch.category;
     return cat == null || cat.isEmpty || activeCategoryIds.contains(cat);
   }).toList();
+
+  // Merge direct categories (Bangla, India, Kids from pabbdyzone.shop)
+  final directChannels = cache.getAllDirectChannels();
+  return [...filteredChannels, ...directChannels];
 });
 
 final trendingChannelsProvider = FutureProvider<List<Channel>>((ref) async {
@@ -317,12 +353,21 @@ final categoriesProvider = FutureProvider<List<Category>>((ref) async {
   final cache = ref.watch(cacheServiceProvider);
   final localCategories = cache.getLocalCategories();
 
+  final List<Category> categoriesList;
   if (localCategories.isEmpty) {
     // If the local cache is empty (first install), wait for the background sync to populate it
     await ref.watch(appSyncProvider.future);
-    return cache.getLocalCategories();
+    categoriesList = cache.getLocalCategories();
+  } else {
+    categoriesList = localCategories;
   }
-  return localCategories;
+
+  // Ensure default direct categories (Bangla, India, Kids) are always present
+  final existingIds = categoriesList.map((c) => c.id.toLowerCase()).toSet();
+  return <Category>[
+    ...defaultDirectCategories.where((c) => !existingIds.contains(c.id.toLowerCase())),
+    ...categoriesList,
+  ];
 });
 
 final activeCategoriesWithCountsProvider = Provider<AsyncValue<List<(Category, int)>>>((ref) {
@@ -346,7 +391,9 @@ final activeCategoriesWithCountsProvider = Provider<AsyncValue<List<(Category, i
   final list = <(Category, int)>[];
   for (final cat in categories) {
     final count = grouped[cat.id]?.length ?? 0;
-    if (count > 0) list.add((cat, count));
+    if (count > 0 || CacheService.directCategoryIds.contains(cat.id)) {
+      list.add((cat, count));
+    }
   }
 
   list.sort((a, b) {

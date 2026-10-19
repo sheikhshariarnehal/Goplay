@@ -24,6 +24,9 @@ Widget getChannelVideoPlayer({
   VoidCallback? onFocusChannelPanel,
   bool isTvDevice = false,
   FocusNode? playPauseFocusNode,
+  List<Channel>? servers,
+  int activeServerIndex = 0,
+  ValueChanged<int>? onServerSelected,
 }) {
   return ChannelVideoPlayerNative(
     channel: channel,
@@ -37,6 +40,9 @@ Widget getChannelVideoPlayer({
     onFocusChannelPanel: onFocusChannelPanel,
     isTvDevice: isTvDevice,
     playPauseFocusNode: playPauseFocusNode,
+    servers: servers,
+    activeServerIndex: activeServerIndex,
+    onServerSelected: onServerSelected,
   );
 }
 
@@ -63,6 +69,12 @@ class ChannelVideoPlayerNative extends StatefulWidget implements ChannelVideoPla
   final bool isTvDevice;
   @override
   final FocusNode? playPauseFocusNode;
+  @override
+  final List<Channel>? servers;
+  @override
+  final int activeServerIndex;
+  @override
+  final ValueChanged<int>? onServerSelected;
 
   const ChannelVideoPlayerNative({
     super.key,
@@ -77,6 +89,9 @@ class ChannelVideoPlayerNative extends StatefulWidget implements ChannelVideoPla
     this.onFocusChannelPanel,
     this.isTvDevice = false,
     this.playPauseFocusNode,
+    this.servers,
+    this.activeServerIndex = 0,
+    this.onServerSelected,
   });
 
   @override
@@ -717,6 +732,15 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
       }
     };
     _stateMachine.onSkipRequest = () {
+      final servers = widget.servers;
+      if (servers != null &&
+          servers.length > 1 &&
+          widget.activeServerIndex < servers.length - 1) {
+        debugPrint(
+            'PlayerWidget: error on server ${widget.activeServerIndex}, auto-falling back to server ${widget.activeServerIndex + 1}');
+        widget.onServerSelected?.call(widget.activeServerIndex + 1);
+        return;
+      }
       if (widget.onNextChannel != null) {
         debugPrint('PlayerWidget: skipping to next channel (immediate skip)');
         widget.onNextChannel!();
@@ -1436,6 +1460,18 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
           ),
         ),
         const SizedBox(width: 4),
+        // Settings / Server Selection Button (when channel has multiple servers)
+        if (widget.servers != null && widget.servers!.length > 1) ...[
+          TvFocusable(
+            isCircle: true,
+            onTap: _showServerSelectionModal,
+            child: const Padding(
+              padding: EdgeInsets.all(8),
+              child: Icon(Icons.settings_outlined, color: Colors.white, size: 24),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
         // Fullscreen Toggle Button
         if (widget.onFullscreenToggle != null)
           TvFocusable(
@@ -1491,6 +1527,164 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
             ),
           ),
       ],
+    );
+  }
+
+  void _showServerSelectionModal() {
+    final servers = widget.servers;
+    if (servers == null || servers.isEmpty) return;
+    widget.onInteract?.call();
+
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 290,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: const Color(0xF2121216),
+                border: Border(
+                  left: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    width: 1,
+                  ),
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x99000000),
+                    blurRadius: 24,
+                    spreadRadius: 4,
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                left: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Header: "Servers" + Close (X)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 12, 14),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Servers',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const Spacer(),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () => Navigator.of(dialogContext).pop(),
+                              child: const Padding(
+                                padding: EdgeInsets.all(6),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white70,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                    // Server list
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        itemCount: servers.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final s = servers[index];
+                          final isSelected = index == widget.activeServerIndex;
+                          final displayName = s.name.isNotEmpty ? s.name : 'Server ${index + 1}';
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () {
+                                Navigator.of(dialogContext).pop();
+                                if (index != widget.activeServerIndex) {
+                                  widget.onServerSelected?.call(index);
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? GoPlayTheme.primary.withValues(alpha: 0.15)
+                                      : const Color(0xFF1E1E22),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? GoPlayTheme.primary
+                                        : Colors.white.withValues(alpha: 0.08),
+                                    width: isSelected ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        displayName,
+                                        style: TextStyle(
+                                          color: isSelected ? GoPlayTheme.primary : Colors.white,
+                                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                    if (isSelected)
+                                      const Icon(
+                                        Icons.check_circle_rounded,
+                                        color: GoPlayTheme.primary,
+                                        size: 20,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
+        final slideIn = Tween<Offset>(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        ));
+        return SlideTransition(position: slideIn, child: child);
+      },
     );
   }
 

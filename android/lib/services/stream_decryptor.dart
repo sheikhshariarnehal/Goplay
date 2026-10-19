@@ -362,4 +362,166 @@ class StreamDecryptor {
       return const {};
     }
   }
+
+  /// Fetches and decrypts a category's channel list from `https://pabbdyzone.shop/{endpoint}`
+  /// (e.g. `channels/Qk4xNzY3MDIzMTU1NzMy.txt` for Bangla, `channels/SW5kaWExNzY3MDA3MjE1ODgz.txt` for India).
+  static Future<List<Channel>> fetchCategoryChannels({
+    required String endpoint,
+    required String categoryId,
+    String? customBaseUrl,
+  }) async {
+    final baseUrl = customBaseUrl ?? baseProUrl;
+    final url = endpoint.startsWith('http')
+        ? endpoint
+        : '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/${endpoint.replaceAll(RegExp(r'^/+'), '')}';
+
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 12),
+        receiveTimeout: const Duration(seconds: 12),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+        },
+      ));
+
+      final response = await dio.get<String>(url);
+      final raw = response.data?.trim() ?? '';
+      if (raw.isEmpty) return const [];
+
+      final decrypted = decryptAuto(raw);
+      final dynamic decoded = json.decode(decrypted);
+      if (decoded is! List) return const [];
+
+      final channels = <Channel>[];
+      for (int i = 0; i < decoded.length; i++) {
+        final item = decoded[i];
+        if (item is! Map) continue;
+
+        Map<String, dynamic>? channelMap;
+        if (item.containsKey('channel')) {
+          final dynamic inner = item['channel'];
+          if (inner is String) {
+            try {
+              final parsedInner = json.decode(inner);
+              if (parsedInner is Map) {
+                channelMap = Map<String, dynamic>.from(parsedInner);
+              }
+            } catch (_) {}
+          } else if (inner is Map) {
+            channelMap = Map<String, dynamic>.from(inner);
+          }
+        } else {
+          channelMap = Map<String, dynamic>.from(item);
+        }
+
+        if (channelMap == null) continue;
+        if (channelMap['visible'] == false) continue;
+
+        final rawName = channelMap['name'] as String? ?? 'Channel ${i + 1}';
+        final logo = channelMap['logo'] as String?;
+        final links = channelMap['links'] as String? ?? '';
+        if (links.isEmpty) continue;
+
+        final safeSuffix = rawName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+        final safeId = 'playz_${categoryId}_${safeSuffix.isEmpty ? i : safeSuffix}';
+
+        channels.add(Channel(
+          id: safeId,
+          name: rawName,
+          logo: logo,
+          category: categoryId,
+          streamUrl: links,
+          isLive: true,
+          quality: 'HD',
+          sortOrder: i,
+        ));
+      }
+
+      return channels;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Fetches and decrypts dynamic stream servers from a channel's manifest (`pro/*.txt`).
+  /// Each server is mapped to an playable [Channel] object with parsed headers and DRM.
+  static Future<List<Channel>> fetchChannelStreams({
+    required String linksPath,
+    required String channelId,
+    required String channelName,
+    String? category,
+    String? logo,
+    String? customBaseUrl,
+  }) async {
+    if (linksPath.isEmpty) return const [];
+
+    final baseUrl = customBaseUrl ?? baseProUrl;
+    final fullUrl = linksPath.startsWith('http')
+        ? linksPath
+        : '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/${linksPath.replaceAll(RegExp(r'^/+'), '')}';
+
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+        },
+      ));
+
+      final response = await dio.get<String>(fullUrl);
+      final raw = response.data?.trim() ?? '';
+      if (raw.isEmpty) return const [];
+
+      final decrypted = decryptAuto(raw);
+      final dynamic decoded = json.decode(decrypted);
+
+      if (decoded is! List) return const [];
+
+      final streams = <Channel>[];
+      for (int i = 0; i < decoded.length; i++) {
+        final item = decoded[i];
+        if (item is! Map) continue;
+
+        final map = Map<String, dynamic>.from(item);
+        final rawLink = map['link'] as String? ?? '';
+        if (rawLink.isEmpty) continue;
+
+        final parsed = parseStreamUrl(rawLink);
+        final streamServerName = map['name'] as String? ?? 'Server ${i + 1}';
+        final apiKey = map['api'] as String?;
+
+        Map<String, dynamic>? drmMap;
+        if (apiKey != null && apiKey.contains(':')) {
+          final tokens = apiKey.split(':');
+          if (tokens.length >= 2) {
+            drmMap = {
+              'type': 'clearkey',
+              'kid': tokens[0].trim(),
+              'key': tokens[1].trim(),
+            };
+          }
+        }
+
+        final safeChannelId = channelId.replaceAll('/', '_');
+        streams.add(Channel(
+          id: '${safeChannelId}_server_$i',
+          name: streamServerName,
+          logo: logo,
+          category: category ?? 'direct',
+          streamUrl: parsed.url,
+          headers: parsed.headers,
+          drm: DrmConfig.fromJson(drmMap),
+          isLive: true,
+          quality: 'HD',
+        ));
+      }
+
+      return streams;
+    } catch (_) {
+      return const [];
+    }
+  }
 }

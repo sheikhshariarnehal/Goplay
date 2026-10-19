@@ -17,6 +17,9 @@ Widget getChannelVideoPlayer({
   VoidCallback? onFocusChannelPanel, // unused on web
   bool isTvDevice = false,           // unused on web
   FocusNode? playPauseFocusNode,     // unused on web
+  List<Channel>? servers,
+  int activeServerIndex = 0,
+  ValueChanged<int>? onServerSelected,
 }) {
   return ChannelVideoPlayerWeb(
     channel: channel,
@@ -27,6 +30,9 @@ Widget getChannelVideoPlayer({
     onPreviousChannel: onPreviousChannel,
     onNextChannel: onNextChannel,
     onInteract: onInteract,
+    servers: servers,
+    activeServerIndex: activeServerIndex,
+    onServerSelected: onServerSelected,
   );
 }
 
@@ -59,6 +65,12 @@ class ChannelVideoPlayerWeb extends StatefulWidget implements ChannelVideoPlayer
   // D-Pad play/pause focus routing — not used on web but required by interface
   @override
   final FocusNode? playPauseFocusNode;
+  @override
+  final List<Channel>? servers;
+  @override
+  final int activeServerIndex;
+  @override
+  final ValueChanged<int>? onServerSelected;
 
   const ChannelVideoPlayerWeb({
     super.key,
@@ -73,6 +85,9 @@ class ChannelVideoPlayerWeb extends StatefulWidget implements ChannelVideoPlayer
     this.onFocusChannelPanel,
     this.isTvDevice = false,
     this.playPauseFocusNode,
+    this.servers,
+    this.activeServerIndex = 0,
+    this.onServerSelected,
   });
 
   @override
