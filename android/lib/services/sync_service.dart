@@ -4,6 +4,7 @@ import 'cache_service.dart';
 import 'supabase_service.dart';
 import 'stream_decryptor.dart';
 import '../providers/app_providers.dart';
+import '../providers/playz_providers.dart';
 
 /// Orchestrates version-based background synchronization for channels and events.
 class SyncService {
@@ -42,21 +43,21 @@ class SyncService {
       bool channelsUpdated = false;
 
       // 2. Synchronize Channels and Categories
-      if (localChannelsVer == null || remoteChannelsVer > localChannelsVer) {
-        debugPrint('SyncService: Channels version changed. Downloading channels and categories...');
+      if (localChannelsVer == null || remoteChannelsVer > localChannelsVer || cache.getLocalChannels().isEmpty) {
+        debugPrint('SyncService: Channels version changed or cache empty. Downloading from Supabase...');
         
         // Sync categories first since channels have foreign-key-like category IDs
         final remoteCategories = await supabase.getCategories();
         await cache.saveLocalCategories(remoteCategories);
 
-        // Sync channels (includes stream URLs and headers)
+        // Sync channels (includes stream URLs, playz_links, stream_servers)
         final remoteChannels = await supabase.getChannels();
         await cache.saveLocalChannels(remoteChannels);
 
         // Update local version
         await cache.saveLocalChannelsVersion(remoteChannelsVer);
         channelsUpdated = true;
-        debugPrint('SyncService: Channels and categories synchronized.');
+        debugPrint('SyncService: Channels and categories synchronized (${remoteChannels.length} channels, ${remoteCategories.length} categories).');
       }
 
       // 3. Synchronize Events directly from pabbdyzone.shop API
@@ -73,35 +74,14 @@ class SyncService {
         debugPrint('SyncService: Direct events sync non-fatal error: $e');
       }
 
-      // 4. Synchronize Direct Categories (Bangla, India, Kids) from pabbdyzone.shop API
-      try {
-        debugPrint('SyncService: Syncing direct categories (Bangla, India, Kids)...');
-        bool directUpdated = false;
-        for (final entry in directCategoryEndpoints.entries) {
-          final catId = entry.key;
-          final endpoint = entry.value;
-          final channels = await StreamDecryptor.fetchCategoryChannels(
-            endpoint: endpoint,
-            categoryId: catId,
-          );
-          if (channels.isNotEmpty) {
-            await cache.saveDirectCategoryChannels(catId, channels);
-            directUpdated = true;
-          }
-        }
-        if (directUpdated) {
-          channelsUpdated = true;
-          debugPrint('SyncService: Direct categories synchronized successfully.');
-        }
-      } catch (e) {
-        debugPrint('SyncService: Direct categories sync non-fatal error: $e');
-      }
+
 
       // 5. Invalidate channels/categories providers if anything changed
       if (channelsUpdated) {
         debugPrint('SyncService: Invalidating channels and categories providers...');
         _ref.invalidate(channelsProvider);
         _ref.invalidate(categoriesProvider);
+        _ref.invalidate(playzCategoriesProvider);
       }
 
       // 5. Sync announcements (lightweight — no version check, always refresh)

@@ -71,9 +71,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
   List<String> _categoryIds = const <String>[
     'trending',
     'favorite',
-    'bangla',
-    'india',
-    'kids',
     'all',
   ];
 
@@ -131,19 +128,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
   // ─── Tab controller lifecycle ───────────────────────────────
 
   void _applyCategories(List<(Category, int)>? categories) {
-    // Filter out direct categories so they are never duplicated in the trailing list
-    final otherCats = categories
-        ?.where((e) => !const {'bangla', 'india', 'kids'}.contains(e.$1.id.toLowerCase()))
-        .toList();
-
     final ids = <String>[
       'trending',
       'favorite',
-      'bangla',
-      'india',
-      'kids',
+      ...?categories?.map((e) => e.$1.id),
       'all',
-      ...?otherCats?.map((e) => e.$1.id),
     ];
 
     // Keyed on the id list, not its length: two categories swapping in/out in
@@ -442,15 +431,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
                               .where((c) => ref
                                   .watch(favoriteChannelIdsProvider)
                                   .contains(c.id))
-                              .length,
-                      banglaCount:
-                          (ref.watch(channelsByCategoryMapProvider).value?['bangla'] ?? const [])
-                              .length,
-                      indiaCount:
-                          (ref.watch(channelsByCategoryMapProvider).value?['india'] ?? const [])
-                              .length,
-                      kidsCount:
-                          (ref.watch(channelsByCategoryMapProvider).value?['kids'] ?? const [])
                               .length,
                       totalCount:
                           (ref.watch(channelsProvider).value ?? const []).length,
@@ -818,9 +798,6 @@ class _CategoryFilterBar extends StatelessWidget {
   final List<(Category, int)> activeCatsWithCounts;
   final int trendingCount;
   final int favoriteCount;
-  final int banglaCount;
-  final int indiaCount;
-  final int kidsCount;
   final int totalCount;
   final ValueChanged<int> onTabTapped;
 
@@ -829,9 +806,6 @@ class _CategoryFilterBar extends StatelessWidget {
     required this.activeCatsWithCounts,
     required this.trendingCount,
     required this.favoriteCount,
-    required this.banglaCount,
-    required this.indiaCount,
-    required this.kidsCount,
     required this.totalCount,
     required this.onTabTapped,
   });
@@ -839,10 +813,6 @@ class _CategoryFilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    final otherCats = activeCatsWithCounts
-        .where((e) => !const {'bangla', 'india', 'kids'}.contains(e.$1.id.toLowerCase()))
-        .toList();
 
     final tabs = <Widget>[
       Tab(
@@ -873,54 +843,25 @@ class _CategoryFilterBar extends StatelessWidget {
           ],
         ),
       ),
-      Tab(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _CategoryIcon(url: 'https://assets-playztv.pages.dev/category/bn.png'),
-            const SizedBox(width: 6),
-            const Text('Bangla'),
-            const SizedBox(width: 6),
-            _CountBadge(
-              animation: tabController.animation,
-              index: 2,
-              count: banglaCount,
-            ),
-          ],
+      for (var i = 0; i < activeCatsWithCounts.length; i++)
+        Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (activeCatsWithCounts[i].$1.iconUrl?.isNotEmpty ?? false) ...[
+                _CategoryIcon(url: activeCatsWithCounts[i].$1.iconUrl!),
+                const SizedBox(width: 6),
+              ],
+              Text(activeCatsWithCounts[i].$1.name),
+              const SizedBox(width: 6),
+              _CountBadge(
+                animation: tabController.animation,
+                index: i + 2,
+                count: activeCatsWithCounts[i].$2,
+              ),
+            ],
+          ),
         ),
-      ),
-      Tab(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _CategoryIcon(url: 'https://assets-playztv.pages.dev/category/india.jpg'),
-            const SizedBox(width: 6),
-            const Text('India'),
-            const SizedBox(width: 6),
-            _CountBadge(
-              animation: tabController.animation,
-              index: 3,
-              count: indiaCount,
-            ),
-          ],
-        ),
-      ),
-      Tab(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _CategoryIcon(url: 'https://assets-playztv.pages.dev/category/kids.jpg'),
-            const SizedBox(width: 6),
-            const Text('Kids'),
-            const SizedBox(width: 6),
-            _CountBadge(
-              animation: tabController.animation,
-              index: 4,
-              count: kidsCount,
-            ),
-          ],
-        ),
-      ),
       Tab(
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -929,31 +870,12 @@ class _CategoryFilterBar extends StatelessWidget {
             const SizedBox(width: 6),
             _CountBadge(
               animation: tabController.animation,
-              index: 5,
+              index: activeCatsWithCounts.length + 2,
               count: totalCount,
             ),
           ],
         ),
       ),
-      for (var i = 0; i < otherCats.length; i++)
-        Tab(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (otherCats[i].$1.iconUrl?.isNotEmpty ?? false) ...[
-                _CategoryIcon(url: otherCats[i].$1.iconUrl!),
-                const SizedBox(width: 6),
-              ],
-              Text(otherCats[i].$1.name),
-              const SizedBox(width: 6),
-              _CountBadge(
-                animation: tabController.animation,
-                index: i + 6,
-                count: otherCats[i].$2,
-              ),
-            ],
-          ),
-        ),
     ];
 
     return TabBar(

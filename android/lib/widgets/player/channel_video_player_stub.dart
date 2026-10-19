@@ -336,6 +336,14 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
           _errorMessage = smState.error?.userMessage ?? 'Unable to play this stream';
           _isBuffering = false;
         });
+        // Auto-failover to next available server if multi-stream channel
+        if (widget.servers != null && widget.servers!.length > 1 && widget.onServerSelected != null) {
+          final nextServerIndex = (widget.activeServerIndex + 1) % widget.servers!.length;
+          if (nextServerIndex != widget.activeServerIndex) {
+            debugPrint('[Failover] Stream failed on index ${widget.activeServerIndex}, switching to server index $nextServerIndex (${widget.servers![nextServerIndex].name})');
+            widget.onServerSelected!(nextServerIndex);
+          }
+        }
         break;
 
       case PlaybackPhase.waitingForInternet:

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../models/channel.dart';
 import '../screens/shell_screen.dart';
 import '../screens/home/home_screen.dart';
+import '../screens/categories/categories_screen.dart';
 import '../screens/channels/channels_screen.dart';
 import '../screens/upcoming/upcoming_screen.dart';
 import '../screens/player/player_screen.dart';
@@ -41,6 +42,14 @@ final appRouter = GoRouter(
             GoRoute(
               path: '/home',
               builder: (context, state) => const HomeScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/categories',
+              builder: (context, state) => const CategoriesScreen(),
             ),
           ],
         ),

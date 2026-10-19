@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import '../models/channel.dart';
+import '../models/category.dart';
 import '../models/drm_config.dart';
 import '../models/event.dart';
 
@@ -520,6 +521,152 @@ class StreamDecryptor {
       }
 
       return streams;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Fetches and decrypts the master categories directory from PlayZ (`categories.txt`).
+  static Future<List<Category>> fetchPlayzRemoteCategories({String? customBaseUrl}) async {
+    final baseUrl = customBaseUrl ?? baseProUrl;
+    final fullUrl = '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/categories.txt';
+
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+        },
+      ));
+
+      final response = await dio.get<String>(fullUrl);
+      final raw = response.data?.trim() ?? '';
+      if (raw.isEmpty) return const [];
+
+      final decrypted = decryptAuto(raw);
+      final dynamic decoded = json.decode(decrypted);
+      if (decoded is! List) return const [];
+
+      final categories = <Category>[];
+      for (int i = 0; i < decoded.length; i++) {
+        final item = decoded[i];
+        if (item is! Map) continue;
+
+        Map<String, dynamic>? catMap;
+        if (item.containsKey('cat')) {
+          final dynamic inner = item['cat'];
+          if (inner is String) {
+            try {
+              final parsedInner = json.decode(inner);
+              if (parsedInner is Map) {
+                catMap = Map<String, dynamic>.from(parsedInner);
+              }
+            } catch (_) {}
+          } else if (inner is Map) {
+            catMap = Map<String, dynamic>.from(inner);
+          }
+        } else {
+          catMap = Map<String, dynamic>.from(item);
+        }
+
+        if (catMap == null) continue;
+        if (catMap['visible'] == false) continue;
+
+        final name = (catMap['name'] as String? ?? '').trim();
+        if (name.isEmpty) continue;
+
+        final type = catMap['type'] as String? ?? 'custom';
+        final api = catMap['api'] as String?;
+        final logo = catMap['logo'] as String?;
+        final xorKey = catMap['xorKey'] as String? ?? '';
+        final hasHeader = catMap['hasHeader'] as bool? ?? false;
+        final hasVpnDetection = catMap['hasVpnDetection'] as bool? ?? false;
+
+        final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+        final id = slug.isEmpty ? 'cat_$i' : slug;
+
+        categories.add(Category(
+          id: id,
+          name: name,
+          iconUrl: logo,
+          type: type,
+          playzEndpoint: type == 'custom' ? api : null,
+          m3uUrl: type == 'm3u' ? api : null,
+          xorKey: xorKey,
+          hasHeader: hasHeader,
+          hasVpnDetection: hasVpnDetection,
+          sortOrder: i + 1,
+          active: true,
+        ));
+      }
+
+      return categories;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Parses an M3U / M3U8 text playlist into a list of playable Channels.
+  static Future<List<Channel>> fetchM3uChannels({
+    required String m3uUrl,
+    required String categoryId,
+  }) async {
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 12),
+        receiveTimeout: const Duration(seconds: 12),
+      ));
+
+      final response = await dio.get<String>(m3uUrl);
+      final raw = response.data ?? '';
+      if (raw.isEmpty) return const [];
+
+      final lines = raw.split(RegExp(r'\r?\n'));
+      final channels = <Channel>[];
+      String? currentName;
+      String? currentLogo;
+
+      for (int i = 0; i < lines.length; i++) {
+        final line = lines[i].trim();
+        if (line.isEmpty) continue;
+
+        if (line.startsWith('#EXTINF:')) {
+          final logoMatch = RegExp(r'tvg-logo="([^"]+)"', caseSensitive: false).firstMatch(line);
+          currentLogo = logoMatch?.group(1);
+
+          final commaIdx = line.indexOf(',');
+          if (commaIdx != -1 && commaIdx < line.length - 1) {
+            currentName = line.substring(commaIdx + 1).trim();
+          } else {
+            currentName = 'Channel ${channels.length + 1}';
+          }
+        } else if (!line.startsWith('#') && (line.startsWith('http://') || line.startsWith('https://'))) {
+          final streamUrl = line;
+          final name = currentName ?? 'Channel ${channels.length + 1}';
+          final safeId = 'm3u_${categoryId}_${channels.length}';
+
+          final parsed = parseStreamUrl(streamUrl);
+
+          channels.add(Channel(
+            id: safeId,
+            name: name,
+            logo: currentLogo,
+            category: categoryId,
+            streamUrl: parsed.url,
+            headers: parsed.headers,
+            isLive: true,
+            quality: 'HD',
+            sortOrder: channels.length,
+          ));
+
+          currentName = null;
+          currentLogo = null;
+        }
+      }
+
+      return channels;
     } catch (_) {
       return const [];
     }

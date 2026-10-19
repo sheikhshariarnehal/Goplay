@@ -226,6 +226,29 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       (c) => c?.id == id,
       orElse: () => null,
     );
+    if (candidate != null) {
+      final activeServers = candidate.streamServers
+          .where((s) => s.active && s.streamUrl.isNotEmpty && !s.streamUrl.startsWith('pro/') && !s.streamUrl.contains('.txt'))
+          .toList();
+      if (activeServers.length > 1) {
+        final streams = activeServers.map((s) => s.toPlayableChannel(
+          parentChannelId: candidate.id,
+          parentName: candidate.name,
+          logo: candidate.logo,
+          category: candidate.category,
+        )).toList();
+
+        if (mounted) {
+          setState(() {
+            _currentChannelId = candidate.id;
+            _currentChannelServers = streams;
+            _activeServerIndex = 0;
+          });
+          _startControlsTimer();
+          return;
+        }
+      }
+    }
     if (candidate != null &&
         (candidate.streamUrl.startsWith('pro/') || candidate.streamUrl.contains('.txt'))) {
       if (mounted) setState(() => _isResolvingStream = true);
@@ -534,6 +557,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     style: GoPlayType.body.copyWith(color: GoPlayTheme.darkOnSurface),
                   ),
                 );
+              }
+
+              // Populate from native Supabase streamServers if present
+              if (_currentChannelServers.isEmpty) {
+                final activeServers = channel.streamServers
+                    .where((s) => s.active && s.streamUrl.isNotEmpty && !s.streamUrl.startsWith('pro/') && !s.streamUrl.contains('.txt'))
+                    .toList();
+                if (activeServers.length > 1) {
+                  _currentChannelServers = activeServers.map((s) => s.toPlayableChannel(
+                    parentChannelId: channel.id,
+                    parentName: channel.name,
+                    logo: channel.logo,
+                    category: channel.category,
+                  )).toList();
+                }
               }
 
               // Auto-resolve encrypted stream if opened directly

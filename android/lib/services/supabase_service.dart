@@ -4,6 +4,7 @@ import '../models/event.dart';
 import '../models/category.dart';
 import '../models/announcement.dart';
 import '../models/hero_banner_item.dart';
+import '../models/stream_server.dart';
 
 /// Service for all Supabase database operations
 class SupabaseService {
@@ -27,9 +28,7 @@ class SupabaseService {
 
   // ─── Channels ───────────────────────────────────────────────
 
-  /// Columns needed for list/grid display (excludes heavy stream_url & headers)
-  static const String _listColumns =
-      'id, name, logo, category, country, language, is_live, is_trending, quality, sort_order, added_at, proxy, drm';
+
 
   /// Fetches ALL channels using pagination to bypass the 1000-row PostgREST limit.
   Future<List<Channel>> getChannels() async {
@@ -40,7 +39,7 @@ class SupabaseService {
     while (true) {
       final response = await _client
           .from('channels')
-          .select()
+          .select('*, stream_servers(*)')
           .order('sort_order', ascending: true)
           .range(offset, offset + batchSize - 1);
 
@@ -62,7 +61,7 @@ class SupabaseService {
     while (true) {
       final response = await _client
           .from('channels')
-          .select(_listColumns)
+          .select('*, stream_servers(*)')
           .eq('is_trending', true)
           .order('sort_order', ascending: true)
           .range(offset, offset + batchSize - 1);
@@ -85,7 +84,7 @@ class SupabaseService {
     while (true) {
       final response = await _client
           .from('channels')
-          .select(_listColumns)
+          .select('*, stream_servers(*)')
           .eq('category', categoryId)
           .order('sort_order', ascending: true)
           .range(offset, offset + batchSize - 1);
@@ -241,4 +240,29 @@ class SupabaseService {
       });
     }
   }
+
+  // ─── Stream Servers (Unified Multi-Server Architecture) ───────
+  Future<List<StreamServer>> getStreamServers(String channelId) async {
+    try {
+      final response = await _client
+          .from('stream_servers')
+          .select()
+          .eq('channel_id', channelId)
+          .eq('active', true)
+          .order('sort_order', ascending: true);
+
+      return (response as List)
+          .map((e) => StreamServer.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> upsertStreamServers(List<StreamServer> servers) async {
+    if (servers.isEmpty) return;
+    final payload = servers.map((s) => s.toJson()).toList();
+    await _client.from('stream_servers').upsert(payload, onConflict: 'id');
+  }
 }
+

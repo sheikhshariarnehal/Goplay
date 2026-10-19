@@ -90,6 +90,24 @@ Future<void> _initHive() async {
   for (final boxName in boxesToOpen) {
     await _openSafeBox(boxName);
   }
+
+  // Clear stale channels & categories cache once to ensure 100% clean sync from Supabase DB
+  try {
+    final settingsBox = Hive.box(AppConstants.settingsBox);
+    const String migrationKey = 'supabase_live_channels_v2_purged';
+    if (settingsBox.get(migrationKey) != true) {
+      if (Hive.isBoxOpen(AppConstants.channelsBox)) {
+        await Hive.box(AppConstants.channelsBox).clear();
+      }
+      if (Hive.isBoxOpen(AppConstants.categoriesBox)) {
+        await Hive.box(AppConstants.categoriesBox).clear();
+      }
+      await settingsBox.put(migrationKey, true);
+      debugPrint('Hive: Purged stale channels & categories caches for live Supabase migration.');
+    }
+  } catch (e) {
+    debugPrint('Hive cache auto-purge error (non-fatal): $e');
+  }
 }
 
 Future<void> _openSafeBox(String boxName) async {

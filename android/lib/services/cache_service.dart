@@ -26,7 +26,7 @@ class CacheService {
   Set<String>? _favoritesMemo;
   Map<String, List<Channel>>? _directCategoryChannelsMemo;
 
-  static const List<String> directCategoryIds = ['bangla', 'kolkata', 'kids'];
+  static const List<String> directCategoryIds = [];
 
   /// Drops every memoized decode. Used after a cache wipe.
   void invalidateMemo() {

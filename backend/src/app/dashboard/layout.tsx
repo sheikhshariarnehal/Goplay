@@ -7,11 +7,20 @@ import { useAuth } from '../../providers/auth-provider';
 import { createAdminSupabaseClient } from '../../utils/supabase';
 import {
   Layers, Tv, Calendar, Bell, Shield, LogOut,
-  ChevronRight, Activity, Menu, X, Search, Sparkles, List, Users, TrendingUp, Image as ImageIcon,
+  ChevronRight, Activity, Menu, X, Search, Sparkles, List, Users, TrendingUp, Image as ImageIcon, Radio, Workflow,
 } from 'lucide-react';
 
-const navItems = [
+interface NavItem {
+  label: string;
+  href: string;
+  icon: any;
+  badge?: string;
+}
+
+const navItems: NavItem[] = [
   { label: 'Overview', href: '/dashboard/overview', icon: Activity },
+  { label: 'Live TV Studio', href: '/dashboard/livetv', icon: Radio },
+  { label: 'Automations & Sync', href: '/dashboard/automations', icon: Workflow, badge: 'AUTO' },
   { label: 'Categories', href: '/dashboard/categories', icon: Layers },
   { label: 'Channels', href: '/dashboard/channels', icon: Tv },
   { label: 'Trending', href: '/dashboard/trending', icon: TrendingUp },
@@ -21,7 +30,7 @@ const navItems = [
   { label: 'Announcements', href: '/dashboard/announcements', icon: Bell },
   { label: 'Channel Monitor', href: '/admin/channel-monitor', icon: Shield },
   { label: 'User Analytics', href: '/admin/analytics', icon: Users },
-] as const;
+];
 
 function getTabLabel(pathname: string): string {
   const item = navItems.find((n) => pathname.startsWith(n.href));
@@ -182,6 +191,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   <div className="flex items-center gap-3">
                     <Icon className="w-4 h-4" />
                     <span>{item.label}</span>
+                    {item.badge && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-lime-400/20 text-lime-400 border border-lime-400/40 text-[9px] font-extrabold tracking-wider">
+                        {item.badge}
+                      </span>
+                    )}
                   </div>
                   <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isActive ? 'rotate-90' : 'opacity-30'}`} />
                 </Link>

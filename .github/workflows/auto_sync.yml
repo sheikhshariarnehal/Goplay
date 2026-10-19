@@ -1,0 +1,35 @@
+name: GoPlay Auto-Sync Streams
+
+on:
+  schedule:
+    # Runs every 45 minutes to refresh expiring tokens (Toffee, etc.)
+    - cron: '*/45 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Refresh Live Stream Tokens
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger GoPlay Backend Stream Sync
+        run: |
+          TARGET_URL="${{ secrets.GOPLAY_BACKEND_URL || 'https://goplay-backend.vercel.app' }}/api/automations/cron"
+          SECRET_KEY="${{ secrets.CRON_SECRET || 'GoPlayCronSecret2026' }}"
+          echo "Pinging GoPlay Backend at $TARGET_URL..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$TARGET_URL" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $SECRET_KEY")
+
+          HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+
+          echo "Response HTTP Status: $HTTP_CODE"
+          echo "Response Body: $HTTP_BODY"
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "Auto-sync trigger failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "Stream sync successfully executed and tokens refreshed!"

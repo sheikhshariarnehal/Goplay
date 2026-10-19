@@ -9,6 +9,9 @@ interface Category {
   name: string;
   icon: string | null;
   icon_url: string | null;
+  type?: string;
+  playz_endpoint?: string | null;
+  m3u_url?: string | null;
   sort_order: number;
   active: boolean;
 }
@@ -34,6 +37,9 @@ export default function CategoryManager({ adminToken, onRefreshStats }: Category
     name: '',
     icon: '',
     icon_url: '',
+    type: 'custom',
+    playz_endpoint: '',
+    m3u_url: '',
     sort_order: 0,
     active: true
   });
@@ -91,6 +97,9 @@ export default function CategoryManager({ adminToken, onRefreshStats }: Category
       name: category.name,
       icon: category.icon || '',
       icon_url: category.icon_url || '',
+      type: category.type || 'custom',
+      playz_endpoint: category.playz_endpoint || '',
+      m3u_url: category.m3u_url || '',
       sort_order: category.sort_order,
       active: category.active !== false
     });
@@ -99,7 +108,7 @@ export default function CategoryManager({ adminToken, onRefreshStats }: Category
 
   const handleCancel = () => {
     setEditingId(null);
-    setFormData({ id: '', name: '', icon: '', icon_url: '', sort_order: 0, active: true });
+    setFormData({ id: '', name: '', icon: '', icon_url: '', type: 'custom', playz_endpoint: '', m3u_url: '', sort_order: 0, active: true });
   };
 
   const handleSave = async (id: string) => {
@@ -115,6 +124,9 @@ export default function CategoryManager({ adminToken, onRefreshStats }: Category
           name: formData.name,
           icon: formData.icon || null,
           icon_url: formData.icon_url || null,
+          type: formData.type || 'custom',
+          playz_endpoint: formData.type === 'custom' ? (formData.playz_endpoint.trim() || null) : null,
+          m3u_url: formData.type === 'm3u' ? (formData.m3u_url.trim() || null) : null,
           sort_order: Number(formData.sort_order),
           active: formData.active
         })
@@ -159,6 +171,9 @@ export default function CategoryManager({ adminToken, onRefreshStats }: Category
           name: formData.name.trim(),
           icon: formData.icon.trim() || null,
           icon_url: formData.icon_url.trim() || null,
+          type: formData.type || 'custom',
+          playz_endpoint: formData.type === 'custom' ? (formData.playz_endpoint.trim() || null) : null,
+          m3u_url: formData.type === 'm3u' ? (formData.m3u_url.trim() || null) : null,
           sort_order: Number(formData.sort_order) || categories.length + 1,
           active: formData.active
         });
@@ -166,7 +181,7 @@ export default function CategoryManager({ adminToken, onRefreshStats }: Category
       if (insertErr) throw insertErr;
 
       showNotification('success', 'Category added successfully');
-      setFormData({ id: '', name: '', icon: '', icon_url: '', sort_order: 0, active: true });
+      setFormData({ id: '', name: '', icon: '', icon_url: '', type: 'custom', playz_endpoint: '', m3u_url: '', sort_order: 0, active: true });
       setShowAddForm(false);
       fetchCategories();
       onRefreshStats();
@@ -458,6 +473,36 @@ export default function CategoryManager({ adminToken, onRefreshStats }: Category
                 className="w-full p-2.5 rounded-xl glass-input text-sm"
               />
               <p className="text-[10px] text-zinc-500">Optional URL for category icon image (PNG, SVG, JPG).</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-400">Stream Type</label>
+              <select
+                value={formData.type}
+                onChange={e => setFormData({ ...formData, type: e.target.value })}
+                className="w-full p-2.5 rounded-xl glass-input text-sm bg-zinc-950 text-white"
+              >
+                <option value="custom">custom (PlayZ Decrypted)</option>
+                <option value="m3u">m3u (Direct Playlist)</option>
+              </select>
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-xs font-semibold text-zinc-400">
+                {formData.type === 'custom' ? 'PlayZ Endpoint Path' : 'M3U Playlist URL'}
+              </label>
+              <input
+                type="text"
+                placeholder={formData.type === 'custom' ? 'channels/Qk4xNzY3MDIzMTU1NzMy.txt' : 'https://m3u-tvb.pages.dev/pk.m3ux'}
+                value={formData.type === 'custom' ? formData.playz_endpoint : formData.m3u_url}
+                onChange={e => {
+                  if (formData.type === 'custom') {
+                    setFormData({ ...formData, playz_endpoint: e.target.value });
+                  } else {
+                    setFormData({ ...formData, m3u_url: e.target.value });
+                  }
+                }}
+                className="w-full p-2.5 rounded-xl glass-input text-sm"
+              />
+              <p className="text-[10px] text-zinc-500">Source path for automatic stream resolution.</p>
             </div>
             <div className="space-y-1 flex items-center gap-3 pt-5">
               <input

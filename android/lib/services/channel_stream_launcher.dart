@@ -66,6 +66,32 @@ class ChannelStreamLauncher {
   }) async {
     final rawUrl = channel.streamUrl.trim();
 
+    // 0. Native Multi-Server Channel from Supabase DB (Instant Launch, 0 JIT delay)
+    final activeServers = channel.streamServers
+        .where((s) => s.active && s.streamUrl.isNotEmpty && !s.streamUrl.startsWith('pro/') && !s.streamUrl.contains('.txt'))
+        .toList();
+    if (activeServers.length > 1) {
+      final safeId = Uri.encodeComponent(channel.id);
+      final dynamicChannels = activeServers.map((s) => s.toPlayableChannel(
+        parentChannelId: channel.id,
+        parentName: channel.name,
+        logo: channel.logo,
+        category: channel.category,
+      )).toList();
+
+      context.push(
+        '/player/$safeId',
+        extra: {
+          'eventChannels': (scope != null && scope.length > 1)
+              ? scope.map((c) => c.id).toList(growable: false)
+              : null,
+          'dynamicChannels': dynamicChannels,
+          'forceFullscreen': false,
+        },
+      );
+      return;
+    }
+
     // 1. Direct stream URL (standard channel)
     if (!rawUrl.startsWith('pro/') && !rawUrl.contains('.txt')) {
       final ids = scope;

@@ -26,7 +26,7 @@ class _ShellScreenState extends State<ShellScreen> {
   void initState() {
     super.initState();
     _navFocusNodes = List.generate(
-      3,
+      4,
       (i) => FocusNode(debugLabel: 'NavMenu_$i'),
     );
   }
@@ -91,20 +91,29 @@ class _ShellScreenState extends State<ShellScreen> {
                       const SizedBox(height: 8),
                       _RailNavItem(
                         focusNode: _navFocusNodes[1],
-                        icon: Icons.smart_display_outlined,
-                        selectedIcon: Icons.smart_display_rounded,
-                        label: 'Channels',
+                        icon: Icons.category_outlined,
+                        selectedIcon: Icons.category_rounded,
+                        label: 'Categories',
                         isSelected: index == 1,
                         onTap: () => _goBranch(1),
                       ),
                       const SizedBox(height: 8),
                       _RailNavItem(
                         focusNode: _navFocusNodes[2],
+                        icon: Icons.smart_display_outlined,
+                        selectedIcon: Icons.smart_display_rounded,
+                        label: 'Channels',
+                        isSelected: index == 2,
+                        onTap: () => _goBranch(2),
+                      ),
+                      const SizedBox(height: 8),
+                      _RailNavItem(
+                        focusNode: _navFocusNodes[3],
                         icon: Icons.sports_soccer_outlined,
                         selectedIcon: Icons.sports_soccer_rounded,
                         label: 'Events',
-                        isSelected: index == 2,
-                        onTap: () => _goBranch(2),
+                        isSelected: index == 3,
+                        onTap: () => _goBranch(3),
                       ),
                     ],
                   ),
@@ -140,19 +149,27 @@ class _ShellScreenState extends State<ShellScreen> {
                 ),
                 _NavItem(
                   focusNode: _navFocusNodes[1],
-                  icon: Icons.smart_display_outlined,
-                  selectedIcon: Icons.smart_display_rounded,
-                  label: 'Channels',
+                  icon: Icons.category_outlined,
+                  selectedIcon: Icons.category_rounded,
+                  label: 'Categories',
                   isSelected: index == 1,
                   onTap: () => _goBranch(1),
                 ),
                 _NavItem(
                   focusNode: _navFocusNodes[2],
+                  icon: Icons.smart_display_outlined,
+                  selectedIcon: Icons.smart_display_rounded,
+                  label: 'Channels',
+                  isSelected: index == 2,
+                  onTap: () => _goBranch(2),
+                ),
+                _NavItem(
+                  focusNode: _navFocusNodes[3],
                   icon: Icons.sports_soccer_outlined,
                   selectedIcon: Icons.sports_soccer_rounded,
                   label: 'Events',
-                  isSelected: index == 2,
-                  onTap: () => _goBranch(2),
+                  isSelected: index == 3,
+                  onTap: () => _goBranch(3),
                 ),
               ],
             ),
@@ -177,6 +194,10 @@ class _ShellScreenState extends State<ShellScreen> {
           } else if (key == LogicalKeyboardKey.digit3 ||
                      key == LogicalKeyboardKey.numpad3) {
             _goBranch(2);
+            return KeyEventResult.handled;
+          } else if (key == LogicalKeyboardKey.digit4 ||
+                     key == LogicalKeyboardKey.numpad4) {
+            _goBranch(3);
             return KeyEventResult.handled;
           }
 
