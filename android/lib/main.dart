@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'core/constants.dart';
-import 'core/theme.dart';
 import 'core/router.dart';
 
 
@@ -14,6 +13,8 @@ import 'core/router.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'utils/web_helper.dart';
 import 'widgets/update_handler.dart';
+import 'widgets/app_broadcast_wrapper.dart';
+import 'providers/app_providers.dart';
 
 // Global future that SplashScreen waits on before navigating.
 // Completes when all heavy init is done.
@@ -41,7 +42,7 @@ void main() {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: GoPlayTheme.surfaceContainer,
+      systemNavigationBarColor: Colors.transparent,
       systemNavigationBarIconBrightness: Brightness.light,
     ));
   } catch (e) {
@@ -147,25 +148,26 @@ class GoPlayApp extends ConsumerWidget {
         removeLoadingSplash();
       });
     }
-    return MaterialApp.router(
-      title: AppConstants.appName,
-      debugShowCheckedModeBanner: false,
-      theme: GoPlayTheme.darkTheme,
-      // The app currently ships dark-only. Declaring it explicitly stops the
-      // platform from ever resolving a light ColorScheme that the screens are
-      // not yet audited for.
-      darkTheme: GoPlayTheme.darkTheme,
-      themeMode: ThemeMode.dark,
-      routerConfig: appRouter,
-      builder: (context, child) {
-        // Bound the system font scale. Unclamped accessibility scaling
-        // overflowed fixed-height layouts such as the channel grid cards.
-        return MediaQuery.withClampedTextScaling(
-          minScaleFactor: 1.0,
-          maxScaleFactor: 1.3,
-          child: UpdateHandler(child: child!),
-        );
-      },
+    final dynamicTheme = ref.watch(appThemeProvider);
+
+    return AppBroadcastWrapper(
+      child: MaterialApp.router(
+        title: AppConstants.appName,
+        debugShowCheckedModeBanner: false,
+        theme: dynamicTheme,
+        darkTheme: dynamicTheme,
+        themeMode: ThemeMode.dark,
+        routerConfig: appRouter,
+        builder: (context, child) {
+          // Bound the system font scale. Unclamped accessibility scaling
+          // overflowed fixed-height layouts such as the channel grid cards.
+          return MediaQuery.withClampedTextScaling(
+            minScaleFactor: 1.0,
+            maxScaleFactor: 1.3,
+            child: UpdateHandler(child: child!),
+          );
+        },
+      ),
     );
   }
 }

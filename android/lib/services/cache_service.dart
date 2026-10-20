@@ -8,6 +8,7 @@ import '../models/event.dart';
 import '../models/category.dart';
 import '../models/announcement.dart';
 import '../models/hero_banner_item.dart';
+import '../models/app_ui_config.dart';
 
 /// Service for managing local Hive cache operations for channels, categories,
 /// events, favorites and sync versions.
@@ -25,6 +26,7 @@ class CacheService {
   List<HeroBannerItem>? _heroBannersMemo;
   Set<String>? _favoritesMemo;
   Map<String, List<Channel>>? _directCategoryChannelsMemo;
+  AppUiConfig? _uiConfigMemo;
 
   static const List<String> directCategoryIds = [];
 
@@ -37,6 +39,7 @@ class CacheService {
     _heroBannersMemo = null;
     _favoritesMemo = null;
     _directCategoryChannelsMemo = null;
+    _uiConfigMemo = null;
   }
 
   /// Reads a Hive box without throwing when the box failed to open at startup.
@@ -196,6 +199,7 @@ class CacheService {
 
   Future<void> clearAllCache() async {
     invalidateMemo();
+    _uiConfigMemo = null;
     await _boxOrNull(AppConstants.channelsBox)?.clear();
     await _boxOrNull(AppConstants.eventsBox)?.clear();
     await _boxOrNull(AppConstants.categoriesBox)?.clear();
@@ -203,6 +207,15 @@ class CacheService {
     final settingsBox = _boxOrNull(AppConstants.settingsBox);
     await settingsBox?.delete('channels_version');
     await settingsBox?.delete('events_version');
+    await settingsBox?.delete('ui_config');
+    await settingsBox?.delete('ui_config_version');
+  }
+
+  Future<void> resetLocalUiConfigToDefaults() async {
+    _uiConfigMemo = AppUiConfig.defaults();
+    final box = _boxOrNull(AppConstants.settingsBox);
+    await box?.delete('ui_config');
+    await box?.delete('ui_config_version');
   }
 
   // ─── Announcements ──────────────────────────────────────────
@@ -235,5 +248,39 @@ class CacheService {
     final box = _boxOrNull(AppConstants.heroBannersBox);
     if (box == null) return;
     await box.put('hero_banners', banners.map((b) => b.toJson()).toList());
+  }
+
+  // ─── App UI Configuration ────────────────────────────────────
+  AppUiConfig getLocalUiConfig() {
+    if (_uiConfigMemo != null) return _uiConfigMemo!;
+    final box = _boxOrNull(AppConstants.settingsBox);
+    final raw = box?.get('ui_config');
+    if (raw is Map) {
+      try {
+        _uiConfigMemo = AppUiConfig.fromJson(Map<String, dynamic>.from(raw));
+        return _uiConfigMemo!;
+      } catch (e) {
+        debugPrint('CacheService: failed to decode cached ui_config: $e');
+      }
+    }
+    return _uiConfigMemo = AppUiConfig.defaults();
+  }
+
+  Future<void> saveLocalUiConfig(AppUiConfig config) async {
+    _uiConfigMemo = config;
+    final box = _boxOrNull(AppConstants.settingsBox);
+    if (box == null) return;
+    await box.put('ui_config', config.toJson());
+  }
+
+  int? getLocalUiConfigVersion() {
+    final box = _boxOrNull(AppConstants.settingsBox);
+    return box?.get('ui_config_version') as int?;
+  }
+
+  Future<void> saveLocalUiConfigVersion(int version) async {
+    final box = _boxOrNull(AppConstants.settingsBox);
+    if (box == null) return;
+    await box.put('ui_config_version', version);
   }
 }

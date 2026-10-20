@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
@@ -11,6 +11,8 @@ import '../models/category.dart';
 import '../models/announcement.dart';
 import '../models/hero_banner_item.dart';
 import '../services/stream_decryptor.dart';
+import '../models/app_ui_config.dart';
+import '../core/theme.dart';
 
 // ─── Core Service Providers ───────────────────────────────────
 final supabaseServiceProvider = Provider<SupabaseService>((ref) {
@@ -37,6 +39,18 @@ final analyticsServiceProvider = Provider<AnalyticsService>((ref) {
 final appSyncProvider = FutureProvider<void>((ref) async {
   final syncService = ref.watch(syncServiceProvider);
   await syncService.sync();
+});
+
+/// Dynamic App UI Configuration Provider (cache-first, instant 0ms startup)
+final uiConfigProvider = Provider<AppUiConfig>((ref) {
+  final cache = ref.watch(cacheServiceProvider);
+  return cache.getLocalUiConfig();
+});
+
+/// Reactive Theme Provider that responds instantly to dashboard theme changes
+final appThemeProvider = Provider<ThemeData>((ref) {
+  final uiConfig = ref.watch(uiConfigProvider);
+  return GoPlayTheme.buildDynamicTheme(uiConfig.theme);
 });
 
 // ─── Channels ─────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import '../../providers/app_providers.dart';
 import '../../widgets/cards/channel_card.dart';
 import '../../models/category.dart';
 import '../../models/channel.dart';
+import '../../models/app_ui_config.dart';
 import '../../widgets/app_overflow_menu.dart';
 
 const double _kTabStripHeight = 48.0;
@@ -105,6 +106,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
       (previous, next) => _syncControllerToSelection(next),
     );
 
+    ref.listenManual<AppUiConfig>(
+      uiConfigProvider,
+      (previous, next) => _applyCategories(ref.read(activeCategoriesWithCountsProvider).value),
+    );
+
     _initialised = true;
   }
 
@@ -128,12 +134,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
   // ─── Tab controller lifecycle ───────────────────────────────
 
   void _applyCategories(List<(Category, int)>? categories) {
+    final uiConfig = ref.read(uiConfigProvider);
+    final tabConfig = uiConfig.channelsTab;
+
     final ids = <String>[
-      'trending',
-      'favorite',
+      if (tabConfig.showTrendingTab) 'trending',
+      if (tabConfig.showFavoriteTab) 'favorite',
       ...?categories?.map((e) => e.$1.id),
-      'all',
+      if (tabConfig.showAllTab) 'all',
     ];
+    if (ids.isEmpty) ids.add('all');
 
     // Keyed on the id list, not its length: two categories swapping in/out in
     // the same sync kept the old controller *and* the old id mapping alive.
@@ -793,7 +803,7 @@ class _ErrorState extends StatelessWidget {
 }
 
 // ─── Category Filter Bar ──────────────────────────────────────
-class _CategoryFilterBar extends StatelessWidget {
+class _CategoryFilterBar extends ConsumerWidget {
   final TabController tabController;
   final List<(Category, int)> activeCatsWithCounts;
   final int trendingCount;
@@ -802,6 +812,7 @@ class _CategoryFilterBar extends StatelessWidget {
   final ValueChanged<int> onTabTapped;
 
   const _CategoryFilterBar({
+    super.key,
     required this.tabController,
     required this.activeCatsWithCounts,
     required this.trendingCount,
@@ -811,71 +822,84 @@ class _CategoryFilterBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    final tabConfig = ref.watch(uiConfigProvider).channelsTab;
 
+    int tabIndex = 0;
     final tabs = <Widget>[
-      Tab(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Trending'),
-            const SizedBox(width: 6),
-            _CountBadge(
-              animation: tabController.animation,
-              index: 0,
-              count: trendingCount,
-            ),
-          ],
+      if (tabConfig.showTrendingTab)
+        Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Trending'),
+              if (tabConfig.showTabCounts) ...[
+                const SizedBox(width: 6),
+                _CountBadge(
+                  animation: tabController.animation,
+                  index: tabIndex++,
+                  count: trendingCount,
+                ),
+              ],
+            ],
+          ),
         ),
-      ),
-      Tab(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Favorite'),
-            const SizedBox(width: 6),
-            _CountBadge(
-              animation: tabController.animation,
-              index: 1,
-              count: favoriteCount,
-            ),
-          ],
+      if (tabConfig.showFavoriteTab)
+        Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Favorite'),
+              if (tabConfig.showTabCounts) ...[
+                const SizedBox(width: 6),
+                _CountBadge(
+                  animation: tabController.animation,
+                  index: tabIndex++,
+                  count: favoriteCount,
+                ),
+              ],
+            ],
+          ),
         ),
-      ),
       for (var i = 0; i < activeCatsWithCounts.length; i++)
         Tab(
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (activeCatsWithCounts[i].$1.iconUrl?.isNotEmpty ?? false) ...[
+              if (tabConfig.showTabIcons && (activeCatsWithCounts[i].$1.iconUrl?.isNotEmpty ?? false)) ...[
                 _CategoryIcon(url: activeCatsWithCounts[i].$1.iconUrl!),
                 const SizedBox(width: 6),
               ],
               Text(activeCatsWithCounts[i].$1.name),
-              const SizedBox(width: 6),
-              _CountBadge(
-                animation: tabController.animation,
-                index: i + 2,
-                count: activeCatsWithCounts[i].$2,
-              ),
+              if (tabConfig.showTabCounts) ...[
+                const SizedBox(width: 6),
+                _CountBadge(
+                  animation: tabController.animation,
+                  index: tabIndex++,
+                  count: activeCatsWithCounts[i].$2,
+                ),
+              ],
             ],
           ),
         ),
-      Tab(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('All'),
-            const SizedBox(width: 6),
-            _CountBadge(
-              animation: tabController.animation,
-              index: activeCatsWithCounts.length + 2,
-              count: totalCount,
-            ),
-          ],
+      if (tabConfig.showAllTab || tabIndex == 0)
+        Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('All'),
+              if (tabConfig.showTabCounts) ...[
+                const SizedBox(width: 6),
+                _CountBadge(
+                  animation: tabController.animation,
+                  index: tabIndex++,
+                  count: totalCount,
+                ),
+              ],
+            ],
+          ),
         ),
-      ),
     ];
 
     return TabBar(
@@ -1037,7 +1061,7 @@ class _CountBadgeState extends State<_CountBadge> {
 }
 
 // ─── Responsive Grid ──────────────────────────────────────────
-class _ResponsiveGrid extends StatefulWidget {
+class _ResponsiveGrid extends ConsumerStatefulWidget {
   final List<Channel> channels;
   final String categoryId;
   final int pageIndex;
@@ -1057,10 +1081,10 @@ class _ResponsiveGrid extends StatefulWidget {
   });
 
   @override
-  State<_ResponsiveGrid> createState() => _ResponsiveGridState();
+  ConsumerState<_ResponsiveGrid> createState() => _ResponsiveGridState();
 }
 
-class _ResponsiveGridState extends State<_ResponsiveGrid> {
+class _ResponsiveGridState extends ConsumerState<_ResponsiveGrid> {
   List<Channel>? _filtered;
   String _lastQuery = '';
   List<Channel>? _lastChannels;
@@ -1148,8 +1172,9 @@ class _ResponsiveGridState extends State<_ResponsiveGrid> {
       // is immune to keyboard-driven MediaQuery.size changes.
       sliver: SliverLayoutBuilder(
         builder: (context, constraints) {
+          final preferredCols = ref.watch(uiConfigProvider).channelsTab.channelGridColumns;
           final gridDelegate =
-              _buildGridDelegate(context, constraints.crossAxisExtent);
+              _buildGridDelegate(context, constraints.crossAxisExtent, preferredCols);
           return SliverGrid(
             gridDelegate: gridDelegate,
             delegate: SliverChildBuilderDelegate(
@@ -1177,8 +1202,9 @@ class _ResponsiveGridState extends State<_ResponsiveGrid> {
 /// never disagree on tile size.
 SliverGridDelegateWithFixedCrossAxisCount _buildGridDelegate(
   BuildContext context,
-  double crossAxisExtent,
-) {
+  double crossAxisExtent, [
+  int preferredCols = 3,
+]) {
   final int cols;
   if (crossAxisExtent >= 1180) {
     cols = 6;
@@ -1187,7 +1213,7 @@ SliverGridDelegateWithFixedCrossAxisCount _buildGridDelegate(
   } else if (crossAxisExtent >= 580) {
     cols = 4;
   } else {
-    cols = 3;
+    cols = (preferredCols >= 2 && preferredCols <= 4) ? preferredCols : 3;
   }
 
   final tileWidth =

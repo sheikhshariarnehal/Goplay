@@ -5,6 +5,7 @@ import 'supabase_service.dart';
 import 'stream_decryptor.dart';
 import '../providers/app_providers.dart';
 import '../providers/playz_providers.dart';
+import '../models/app_ui_config.dart';
 
 /// Orchestrates version-based background synchronization for channels and events.
 class SyncService {
@@ -99,6 +100,32 @@ class SyncService {
         _ref.invalidate(heroBannersProvider);
       } catch (e) {
         debugPrint('SyncService: Hero banners sync failed (non-fatal): $e');
+      }
+
+      // 7. Synchronize Dynamic App UI Configuration
+      try {
+        final remoteUiVer = remoteVersions['ui_config_version'] as int? ?? 1;
+        final localUiVer = cache.getLocalUiConfigVersion();
+        final rawRemoteUiConfig = remoteVersions['ui_config'];
+
+        if (localUiVer == null || remoteUiVer > localUiVer || localUiVer == 0) {
+          debugPrint('SyncService: UI Config version changed ($localUiVer -> $remoteUiVer). Updating local cache...');
+          AppUiConfig? newConfig;
+          if (rawRemoteUiConfig is Map) {
+            newConfig = AppUiConfig.fromJson(Map<String, dynamic>.from(rawRemoteUiConfig));
+          } else {
+            newConfig = await supabase.getUiConfig();
+          }
+
+          if (newConfig != null) {
+            await cache.saveLocalUiConfig(newConfig);
+            await cache.saveLocalUiConfigVersion(remoteUiVer);
+            _ref.invalidate(uiConfigProvider);
+            debugPrint('SyncService: UI Config synchronized successfully (v$remoteUiVer).');
+          }
+        }
+      } catch (e) {
+        debugPrint('SyncService: UI Config sync failed (non-fatal): $e');
       }
 
       debugPrint('SyncService: Background sync check completed successfully.');

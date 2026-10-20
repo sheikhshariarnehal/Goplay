@@ -5,6 +5,7 @@ import '../models/category.dart';
 import '../models/announcement.dart';
 import '../models/hero_banner_item.dart';
 import '../models/stream_server.dart';
+import '../models/app_ui_config.dart';
 
 /// Service for all Supabase database operations
 class SupabaseService {
@@ -17,7 +18,7 @@ class SupabaseService {
     try {
       final response = await _client
           .from('app_settings')
-          .select('channels_version, events_version')
+          .select('channels_version, events_version, ui_config_version, ui_config')
           .eq('id', 1)
           .maybeSingle();
       return response;
@@ -263,6 +264,23 @@ class SupabaseService {
     if (servers.isEmpty) return;
     final payload = servers.map((s) => s.toJson()).toList();
     await _client.from('stream_servers').upsert(payload, onConflict: 'id');
+  }
+
+  // ─── App UI Configuration ────────────────────────────────────
+  Future<AppUiConfig?> getUiConfig() async {
+    try {
+      final response = await _client
+          .from('app_settings')
+          .select('ui_config')
+          .eq('id', 1)
+          .maybeSingle();
+      if (response != null && response['ui_config'] != null) {
+        return AppUiConfig.fromJson(Map<String, dynamic>.from(response['ui_config']));
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 }
 

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../core/typography.dart';
 import '../../models/event.dart';
+import '../../providers/app_providers.dart';
 import '../countdown_timer.dart';
 import '../team_flag.dart';
 import '../tv_focus_wrapper.dart';
@@ -14,7 +16,7 @@ import 'event_card.dart';
 /// typography tokens, and elevation design system.
 ///
 /// 100% theme-aware (supports dark & light themes, TV focus, and smooth 12dp rounded cards).
-class PlayZEventCard extends StatefulWidget {
+class PlayZEventCard extends ConsumerStatefulWidget {
   final SportEvent event;
   final VoidCallback? onTap;
 
@@ -31,10 +33,10 @@ class PlayZEventCard extends StatefulWidget {
   static double tileExtent(BuildContext context) => EventCard.tileExtent(context);
 
   @override
-  State<PlayZEventCard> createState() => _PlayZEventCardState();
+  ConsumerState<PlayZEventCard> createState() => _PlayZEventCardState();
 }
 
-class _PlayZEventCardState extends State<PlayZEventCard>
+class _PlayZEventCardState extends ConsumerState<PlayZEventCard>
     with SingleTickerProviderStateMixin {
   Timer? _liveTimer;
   late AnimationController _pulseController;
@@ -137,37 +139,44 @@ class _PlayZEventCardState extends State<PlayZEventCard>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final uiConfig = ref.watch(uiConfigProvider);
+    final sportsCardsConfig = uiConfig.sportsCards;
+    final eventCardStyle = uiConfig.componentStyles.eventCard;
     final event = widget.event;
     final isLive = event.isLive;
     final isToday = _checkIsToday(event.startTime);
     final elapsedText = _formatElapsed(event.startTime);
 
-    // GoPlay theme-aligned color tokens - dark black surface
-    final cardBg = isDark ? const Color(0xFF121212) : theme.colorScheme.surfaceContainer;
+    // Resolves card background: uses custom override if active; otherwise global theme.cardColor
+    final cardBg = GoPlayTheme.parseHex(uiConfig.resolveEventCardBg());
     final onSurface = theme.colorScheme.onSurface; // #F1F1F1 in dark mode
     final onSurfaceVariant = theme.colorScheme.onSurfaceVariant; // #AAAAAA in dark mode
     final onSurfaceMuted = isDark ? GoPlayTheme.darkOnSurfaceMuted : GoPlayTheme.lightOnSurfaceMuted;
 
-    // Border: Vibrant Volt accent for LIVE, subtle hairline border for upcoming
-    final borderColor = isLive
-        ? GoPlayTheme.primary // #C8FF00
-        : (isDark ? const Color(0x28FFFFFF) : GoPlayTheme.lightCardBorder);
+    // Border & radius styling
+    final cardRadius = eventCardStyle.useCustomOverride ? eventCardStyle.borderRadius : 12.0;
+    final borderColor = eventCardStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(eventCardStyle.borderColor)
+        : (isLive ? GoPlayTheme.primary : (isDark ? const Color(0x28FFFFFF) : GoPlayTheme.lightCardBorder));
+    final borderWidth = eventCardStyle.useCustomOverride
+        ? eventCardStyle.borderWidth
+        : (isLive ? 1.0 : 0.8);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4.0), // matches _kTileGap
       child: RepaintBoundary(
         child: TvFocusable(
-          borderRadius: BorderRadius.circular(12), // GoPlay 12dp standard radius
+          borderRadius: BorderRadius.circular(cardRadius),
           onTap: widget.onTap,
           child: SizedBox(
             height: EventCard.tileHeight(context),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: cardBg,
-                borderRadius: BorderRadius.circular(12.0),
+                borderRadius: BorderRadius.circular(cardRadius),
                 border: Border.all(
                   color: borderColor,
-                  width: isLive ? 1.0 : 0.8,
+                  width: borderWidth,
                 ),
                 boxShadow: isLive
                     ? [
@@ -186,7 +195,7 @@ class _PlayZEventCardState extends State<PlayZEventCard>
                       ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(11.0),
+                borderRadius: BorderRadius.circular(cardRadius > 1 ? cardRadius - 1 : cardRadius),
                 child: Stack(
                   children: [
                     // Main Card Content
@@ -299,20 +308,28 @@ class _PlayZEventCardState extends State<PlayZEventCard>
                                                 vertical: 2.0,
                                               ),
                                               decoration: BoxDecoration(
-                                                color: GoPlayTheme.liveBadge, // #FF3B30
+                                                color: eventCardStyle.useCustomOverride
+                                                    ? GoPlayTheme.parseHex(eventCardStyle.liveBadgeColor)
+                                                    : GoPlayTheme.liveBadge,
                                                 borderRadius: BorderRadius.circular(4.0),
                                               ),
                                               child: Row(
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
-                                                  FadeTransition(
-                                                    opacity: _dotFade,
-                                                    child: const Icon(
-                                                      Icons.circle,
-                                                      size: 5.0,
-                                                      color: Colors.white,
-                                                    ),
-                                                  ),
+                                                  sportsCardsConfig.showLivePulse
+                                                      ? FadeTransition(
+                                                          opacity: _dotFade,
+                                                          child: const Icon(
+                                                            Icons.circle,
+                                                            size: 5.0,
+                                                            color: Colors.white,
+                                                          ),
+                                                        )
+                                                      : const Icon(
+                                                          Icons.circle,
+                                                          size: 5.0,
+                                                          color: Colors.white,
+                                                        ),
                                                   const SizedBox(width: 3.5),
                                                   const Text(
                                                     'LIVE',
@@ -376,7 +393,7 @@ class _PlayZEventCardState extends State<PlayZEventCard>
                                                 ),
                                               ),
                                               const SizedBox(height: 2.5),
-                                              if (event.isUpcoming && isToday)
+                                              if (event.isUpcoming && isToday && sportsCardsConfig.showCountdownTimer)
                                                 CountdownTimerWidget(
                                                   startTime: event.startTime,
                                                   style: const TextStyle(

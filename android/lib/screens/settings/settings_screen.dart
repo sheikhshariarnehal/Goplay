@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../core/typography.dart';
 import '../../providers/app_providers.dart';
@@ -32,6 +33,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _selectedSyncRate = '6 Hours';
   bool _isSyncing = false;
   bool _isClearingCache = false;
+  bool _isResettingUi = false;
 
   final List<String> _bufferModes = ['Fast Load', 'Balanced', 'High Stability'];
   final List<String> _aspectRatios = ['16:9 (Fit)', 'Stretch', 'Original'];
@@ -158,13 +160,87 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _handleResetUiToDefaults() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Reset UI to Default Theme?',
+          style: TextStyle(color: GoPlayTheme.onSurface, fontWeight: FontWeight.w600),
+        ),
+        content: const Text(
+          'This will reset your local cached colors, card styles, and layout back to default GoPlay Volt styling (#C8FF00 / #0F0F0F).',
+          style: TextStyle(color: GoPlayTheme.onSurfaceVariant, fontSize: GoPlayType.base, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: GoPlayTheme.onSurfaceVariant)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GoPlayTheme.primary,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Reset Theme', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isResettingUi = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(cacheServiceProvider).resetLocalUiConfigToDefaults();
+      ref.invalidate(uiConfigProvider);
+
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.restart_alt_rounded, color: GoPlayTheme.primary),
+                SizedBox(width: 10),
+                Text(
+                  'UI theme reset to default GoPlay Volt!',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+                ),
+              ],
+            ),
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isResettingUi = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final updateState = ref.watch(updateProvider);
     final notifier = ref.read(updateProvider.notifier);
+    final uiConfig = ref.watch(uiConfigProvider);
+    final settingsStyle = uiConfig.componentStyles.settingsScreen;
+    final headerGradStart = settingsStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(settingsStyle.headerGradientStart)
+        : const Color(0xFFFF7A85);
+    final headerGradEnd = settingsStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(settingsStyle.headerGradientEnd)
+        : const Color(0xFFFF5263);
+
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: GoPlayTheme.surface,
+      backgroundColor: cs.surface,
       body: SafeArea(
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
@@ -173,7 +249,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             SliverAppBar(
               floating: false,
               pinned: true,
-              backgroundColor: GoPlayTheme.surface,
+              backgroundColor: cs.surface,
               elevation: 0,
               automaticallyImplyLeading: false,
               systemOverlayStyle: SystemUiOverlayStyle.light,
@@ -213,14 +289,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           height: 64,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFF7A85), Color(0xFFFF5263)],
+                            gradient: LinearGradient(
+                              colors: [headerGradStart, headerGradEnd],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFFF5263).withValues(alpha: 0.3),
+                                color: headerGradEnd.withValues(alpha: 0.3),
                                 blurRadius: 12,
                                 offset: const Offset(0, 3),
                               ),
@@ -331,25 +407,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const Divider(color: Color(0x14FFFFFF), height: 1),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        child: Row(
+                        child: Column(
                           children: [
-                            Expanded(
-                              child: _buildActionButton(
-                                label: _isSyncing ? 'Syncing...' : 'Force Sync',
-                                icon: Icons.sync_rounded,
-                                isLoading: _isSyncing,
-                                color: GoPlayTheme.primary,
-                                onPressed: _isSyncing ? null : _handleForceSync,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildActionButton(
+                                    label: _isSyncing ? 'Syncing...' : 'Force Sync',
+                                    icon: Icons.sync_rounded,
+                                    isLoading: _isSyncing,
+                                    color: GoPlayTheme.primary,
+                                    onPressed: _isSyncing ? null : _handleForceSync,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _buildActionButton(
+                                    label: _isClearingCache ? 'Clearing...' : 'Clear Cache',
+                                    icon: Icons.cleaning_services_rounded,
+                                    isLoading: _isClearingCache,
+                                    color: GoPlayTheme.error,
+                                    onPressed: _isClearingCache ? null : _handleClearCache,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
                               child: _buildActionButton(
-                                label: _isClearingCache ? 'Clearing...' : 'Clear Cache',
-                                icon: Icons.cleaning_services_rounded,
-                                isLoading: _isClearingCache,
-                                color: GoPlayTheme.error,
-                                onPressed: _isClearingCache ? null : _handleClearCache,
+                                label: _isResettingUi ? 'Resetting UI...' : 'Reset UI to Default Theme',
+                                icon: Icons.restart_alt_rounded,
+                                isLoading: _isResettingUi,
+                                color: GoPlayTheme.onSurfaceVariant,
+                                onPressed: _isResettingUi ? null : _handleResetUiToDefaults,
                               ),
                             ),
                           ],
@@ -452,7 +543,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
                   const SizedBox(height: 14),
 
-                  // ─── Group 4: About & Privacy Action Tile ───
+                  // ─── Group 4: Community & Support ───
+                  if (uiConfig.communityLinks.telegramUrl.isNotEmpty) ...[
+                    _buildSingleActionCard(
+                      icon: Icons.send_rounded,
+                      iconColor: const Color(0xFF0088CC),
+                      title: 'Join Telegram Channel',
+                      description: 'Get real-time updates, announcements & live support',
+                      onTap: () {
+                        launchUrl(
+                          Uri.parse(uiConfig.communityLinks.telegramUrl),
+                          mode: LaunchMode.externalApplication,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (uiConfig.communityLinks.discordUrl.isNotEmpty) ...[
+                    _buildSingleActionCard(
+                      icon: Icons.forum_rounded,
+                      iconColor: const Color(0xFF5865F2),
+                      title: 'Join Discord Server',
+                      description: 'Connect with community members & report issues',
+                      onTap: () {
+                        launchUrl(
+                          Uri.parse(uiConfig.communityLinks.discordUrl),
+                          mode: LaunchMode.externalApplication,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // ─── Group 5: About & Privacy Action Tile ───
                   _buildSingleActionCard(
                     icon: Icons.info_outline_rounded,
                     iconColor: const Color(0xFFA78BFA),
@@ -489,17 +612,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required VoidCallback onToggleExpand,
     required List<Widget> children,
   }) {
+    final uiConfig = ref.watch(uiConfigProvider);
+    final settingsStyle = uiConfig.componentStyles.settingsScreen;
+    final cardBg = GoPlayTheme.parseHex(uiConfig.resolveSettingsCardBg());
+    final cardBorderColor = settingsStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(settingsStyle.cardBorderColor)
+        : const Color(0x14FFFFFF);
+    final cardBorderWidth = settingsStyle.useCustomOverride ? settingsStyle.cardBorderWidth : 0.6;
+    final cardBorderRadius = settingsStyle.useCustomOverride ? settingsStyle.cardBorderRadius : 16.0;
+    final effectiveIconBg = settingsStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(settingsStyle.iconContainerColor)
+        : iconColor.withValues(alpha: 0.12);
+    final effectiveIconColor = settingsStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(settingsStyle.iconAccentColor)
+        : iconColor;
+
     return Container(
       decoration: BoxDecoration(
-        color: GoPlayTheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(16),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(cardBorderRadius),
         border: Border.all(
-          color: const Color(0x14FFFFFF),
-          width: 0.6,
+          color: cardBorderColor,
+          width: cardBorderWidth,
         ),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(cardBorderRadius),
         child: Column(
           children: [
             Material(
@@ -516,10 +654,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       Container(
                         padding: const EdgeInsets.all(9),
                         decoration: BoxDecoration(
-                          color: iconColor.withValues(alpha: 0.12),
+                          color: effectiveIconBg,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(icon, color: iconColor, size: 20),
+                        child: Icon(icon, color: effectiveIconColor, size: 20),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -586,20 +724,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String description,
     required VoidCallback onTap,
   }) {
+    final uiConfig = ref.watch(uiConfigProvider);
+    final settingsStyle = uiConfig.componentStyles.settingsScreen;
+    final cardBg = GoPlayTheme.parseHex(uiConfig.resolveSettingsCardBg());
+    final cardBorderColor = settingsStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(settingsStyle.cardBorderColor)
+        : const Color(0x14FFFFFF);
+    final cardBorderWidth = settingsStyle.useCustomOverride ? settingsStyle.cardBorderWidth : 0.6;
+    final cardBorderRadius = settingsStyle.useCustomOverride ? settingsStyle.cardBorderRadius : 16.0;
+    final effectiveIconBg = settingsStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(settingsStyle.iconContainerColor)
+        : iconColor.withValues(alpha: 0.12);
+    final effectiveIconColor = settingsStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(settingsStyle.iconAccentColor)
+        : iconColor;
+
     return Container(
       decoration: BoxDecoration(
-        color: GoPlayTheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(16),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(cardBorderRadius),
         border: Border.all(
-          color: const Color(0x14FFFFFF),
-          width: 0.6,
+          color: cardBorderColor,
+          width: cardBorderWidth,
         ),
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(cardBorderRadius),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(cardBorderRadius),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
@@ -608,10 +761,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Container(
                   padding: const EdgeInsets.all(9),
                   decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.12),
+                    color: effectiveIconBg,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: iconColor, size: 20),
+                  child: Icon(icon, color: effectiveIconColor, size: 20),
                 ),
                 const SizedBox(width: 14),
                 Expanded(

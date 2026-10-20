@@ -43,7 +43,7 @@ void showChannelSelector({
 
   showModalBottomSheet(
     context: context,
-    backgroundColor: GoPlayTheme.surfaceContainer,
+    backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),

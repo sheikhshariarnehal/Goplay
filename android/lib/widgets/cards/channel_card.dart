@@ -75,12 +75,17 @@ class ChannelCard extends ConsumerWidget {
     final isFavorite = ref.watch(
       favoriteChannelIdsProvider.select((ids) => ids.contains(channel.id)),
     );
+    final uiConfig = ref.watch(uiConfigProvider);
+    final tabConfig = uiConfig.channelsTab;
+    final channelCardStyle = uiConfig.componentStyles.channelCard;
 
     final quality = channel.quality?.trim();
     final hasQuality = quality != null && quality.isNotEmpty;
     final is4K = quality == '4K';
 
-    final badgeBase = is4K ? const Color(0xFF3B82F6) : GoPlayTheme.primary;
+    final badgeBase = channelCardStyle.useCustomOverride
+        ? GoPlayTheme.parseHex(channelCardStyle.qualityBadgeColor)
+        : (is4K ? const Color(0xFF3B82F6) : GoPlayTheme.primary);
     final badgeText =
         isDark ? badgeBase : Color.lerp(badgeBase, Colors.black, 0.35)!;
 
@@ -96,8 +101,17 @@ class ChannelCard extends ConsumerWidget {
       ),
     );
 
+    final cardBg = GoPlayTheme.parseHex(uiConfig.resolveChannelCardBg());
+    final cardRadius = channelCardStyle.useCustomOverride ? channelCardStyle.borderRadius : 10.0;
+    final cardBorder = channelCardStyle.useCustomOverride && channelCardStyle.borderWidth > 0
+        ? Border.all(
+            color: GoPlayTheme.parseHex(channelCardStyle.borderColor),
+            width: channelCardStyle.borderWidth,
+          )
+        : null;
+
     return TvFocusable(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(cardRadius > 2 ? cardRadius - 2 : cardRadius),
       onTap: () => _open(context),
       onLongPress: () => _toggleFavorite(ref),
       // Restores accessibility: the grid used to be wrapped in
@@ -109,8 +123,9 @@ class ChannelCard extends ConsumerWidget {
       child: SizedBox.expand(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: cs.surfaceContainerHigh,
-            borderRadius: const BorderRadius.all(Radius.circular(10)),
+            color: cardBg,
+            borderRadius: BorderRadius.all(Radius.circular(cardRadius)),
+            border: cardBorder,
           ),
           child: Stack(
             alignment: Alignment.center,
@@ -126,66 +141,69 @@ class ChannelCard extends ConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Center(
-                      child: SizedBox(
-                        width: _kAvatarSize,
-                        height: _kAvatarSize,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: cs.onSurface.withValues(alpha: 0.08),
-                            shape: BoxShape.circle,
-                          ),
-                          child: channel.logo != null && channel.logo!.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: channel.logo!,
-                                  fit: BoxFit.cover,
-                                  width: _kAvatarSize,
-                                  height: _kAvatarSize,
-                                  memCacheWidth: 108,
-                                  memCacheHeight: 108,
-                                  fadeInDuration:
-                                      const Duration(milliseconds: 150),
-                                  imageBuilder: (context, imageProvider) =>
-                                      DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      image: DecorationImage(
-                                        image: imageProvider,
-                                        fit: BoxFit.cover,
+                    if (tabConfig.showCardLogos) ...[
+                      Center(
+                        child: SizedBox(
+                          width: _kAvatarSize,
+                          height: _kAvatarSize,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: cs.onSurface.withValues(alpha: 0.08),
+                              shape: BoxShape.circle,
+                            ),
+                            child: channel.logo != null && channel.logo!.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: channel.logo!,
+                                    fit: BoxFit.cover,
+                                    width: _kAvatarSize,
+                                    height: _kAvatarSize,
+                                    memCacheWidth: 108,
+                                    memCacheHeight: 108,
+                                    fadeInDuration:
+                                        const Duration(milliseconds: 150),
+                                    imageBuilder: (context, imageProvider) =>
+                                        DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        image: DecorationImage(
+                                          image: imageProvider,
+                                          fit: BoxFit.cover,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  placeholder: (context, url) => initials,
-                                  errorWidget: (context, url, err) => initials,
-                                )
-                              : initials,
+                                    placeholder: (context, url) => initials,
+                                    errorWidget: (context, url, err) => initials,
+                                  )
+                                : initials,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: _kAvatarGap),
+                      const SizedBox(height: _kAvatarGap),
+                    ],
                     // Flexible so the name can never push the column past the
                     // tile height — the old fixed layout overflowed on 320dp
                     // widths and at any text scale above ~1.15.
-                    Flexible(
-                      child: Text(
-                        channel.displayName,
-                        style: GoPlayType.inter(
-                          color: cs.onSurface,
-                          fontSize: _kNameFontSize,
-                          fontWeight: FontWeight.w600,
-                          height: _kNameLineHeight,
+                    if (tabConfig.showCardNames)
+                      Flexible(
+                        child: Text(
+                          channel.displayName,
+                          style: GoPlayType.inter(
+                            color: cs.onSurface,
+                            fontSize: _kNameFontSize,
+                            fontWeight: FontWeight.w600,
+                            height: _kNameLineHeight,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: _kNameMaxLines,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        textAlign: TextAlign.center,
-                        maxLines: _kNameMaxLines,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
                   ],
                 ),
               ),
 
               // ── Quality badge ─────────────────────────────────
-              if (hasQuality)
+              if (hasQuality && tabConfig.showQualityBadge)
                 Positioned(
                   top: 6,
                   left: 6,
@@ -218,14 +236,14 @@ class ChannelCard extends ConsumerWidget {
               // Long-press toggles. Deliberately not a button: a second tap
               // target on a ~100dp tile competes with "open channel" and would
               // be below the minimum touch-target size.
-              if (isFavorite)
+              if (isFavorite && tabConfig.showCardFavorites)
                 Positioned(
                   top: 5,
                   right: 5,
                   child: Icon(
                     Icons.bookmark_rounded,
                     size: 14,
-                    color: GoPlayTheme.primary,
+                    color: cs.primary,
                   ),
                 ),
             ],

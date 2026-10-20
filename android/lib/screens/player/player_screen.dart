@@ -15,46 +15,12 @@ import '../../services/stream_decryptor.dart';
 
 // ─── Pre-cached top-level constants — zero per-frame allocations ─
 
-const _kScreenBg = BoxDecoration(color: GoPlayTheme.surface);
-
-const _kSidePanelDeco = BoxDecoration(
-  color: GoPlayTheme.surfaceContainerLow,
-  border: Border(left: BorderSide(color: GoPlayTheme.cardBorder, width: 0.8)),
-);
-
 // Top-bar gradient pre-cached — avoids allocation on every fullscreen build
 const _kTopBarGradient = BoxDecoration(
   gradient: LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [Color(0xDC000000), Color(0x78000000), Colors.transparent],
-  ),
-);
-
-// Tile decorations — current / hovered / normal
-const _kTileDecoActive = BoxDecoration(
-  color: GoPlayTheme.surfaceContainerHigh,
-  borderRadius: BorderRadius.all(Radius.circular(16)),
-  border: Border.fromBorderSide(
-    BorderSide(color: GoPlayTheme.primary, width: 1.0),
-  ),
-  boxShadow: [
-    BoxShadow(color: Color(0x33C8FF00), blurRadius: 8, offset: Offset(0, 2)),
-  ],
-);
-// Tile decorations — hovered / normal
-const _kTileDecoHovered = BoxDecoration(
-  color: GoPlayTheme.surfaceContainerHigh,
-  borderRadius: BorderRadius.all(Radius.circular(16)),
-  border: Border.fromBorderSide(
-    BorderSide(color: GoPlayTheme.cardBorder, width: 0.8),
-  ),
-);
-const _kTileDecoNormal = BoxDecoration(
-  color: GoPlayTheme.surfaceContainer,
-  borderRadius: BorderRadius.all(Radius.circular(16)),
-  border: Border.fromBorderSide(
-    BorderSide(color: GoPlayTheme.cardBorder, width: 0.8),
   ),
 );
 
@@ -499,6 +465,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final channelsAsync = ref.watch(channelsProvider);
     final mq = MediaQuery.of(context);
     // TV detection: matches improved logic from ShellScreen
@@ -525,9 +492,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         canRequestFocus: false,
         onKeyEvent: _handlePlayerKeyEvent,
         child: Scaffold(
-          backgroundColor: const Color(0xFF070709),
+          backgroundColor: cs.surface,
           body: DecoratedBox(
-            decoration: _kScreenBg,
+            decoration: BoxDecoration(color: cs.surface),
           child: channelsAsync.when(
             data: (channels) {
               final allChannels = [
@@ -701,12 +668,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             duration: const Duration(milliseconds: 200),
                             decoration: _channelPanelHasFocus
                                 ? BoxDecoration(
-                                    color: GoPlayTheme.surfaceContainerLow,
-                                    border: const Border(
-                                      left: BorderSide(color: GoPlayTheme.primary, width: 1.5),
+                                    color: cs.surfaceContainerLow,
+                                    border: Border(
+                                      left: BorderSide(color: cs.primary, width: 1.5),
                                     ),
                                   )
-                                : _kSidePanelDeco,
+                                : BoxDecoration(
+                                    color: cs.surface,
+                                    border: Border(
+                                      left: BorderSide(color: cs.outline.withValues(alpha: 0.2), width: 0.8),
+                                    ),
+                                  ),
                             child: SafeArea(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1368,8 +1340,34 @@ class _ChannelTileState extends State<_ChannelTile> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final channel = widget.channel;
     final isCurrent = widget.isCurrent;
+
+    final normalDeco = BoxDecoration(
+      color: cs.surfaceContainer,
+      borderRadius: const BorderRadius.all(Radius.circular(16)),
+      border: Border.fromBorderSide(
+        BorderSide(color: cs.outline, width: 0.8),
+      ),
+    );
+    final activeDeco = BoxDecoration(
+      color: cs.surfaceContainerHigh,
+      borderRadius: const BorderRadius.all(Radius.circular(16)),
+      border: Border.fromBorderSide(
+        BorderSide(color: cs.primary, width: 1.0),
+      ),
+      boxShadow: [
+        BoxShadow(color: cs.primary.withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 2)),
+      ],
+    );
+    final hoveredDeco = BoxDecoration(
+      color: cs.surfaceContainerHigh,
+      borderRadius: const BorderRadius.all(Radius.circular(16)),
+      border: Border.fromBorderSide(
+        BorderSide(color: cs.outline, width: 0.8),
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1391,8 +1389,8 @@ class _ChannelTileState extends State<_ChannelTile> {
                 ? _kHoverMatrix
                 : _kIdentityMatrix,
             decoration: isCurrent
-                ? _kTileDecoActive
-                : (_isHovered ? _kTileDecoHovered : _kTileDecoNormal),
+                ? activeDeco
+                : (_isHovered ? hoveredDeco : normalDeco),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(

@@ -92,6 +92,13 @@ class _UpcomingScreenState extends ConsumerState<UpcomingScreen>
     final sportsAsync = ref.watch(sortedSportCategoriesProvider);
     final selectedSport = ref.watch(selectedSportFilterProvider);
     final liveEventsCount = ref.watch(liveEventsProvider).value?.length ?? 0;
+    final uiConfig = ref.watch(uiConfigProvider);
+
+    final activeBg = GoPlayTheme.parseHex(uiConfig.resolveCategoryChipActiveBg(isHome: false));
+    final inactiveBg = GoPlayTheme.parseHex(uiConfig.resolveCategoryChipInactiveBg(isHome: false));
+    final activeTextColor = GoPlayTheme.parseHex(uiConfig.resolveCategoryChipActiveTextColor(isHome: false));
+    final inactiveTextColor = GoPlayTheme.parseHex(uiConfig.resolveCategoryChipInactiveTextColor(isHome: false));
+    final chipRadius = uiConfig.resolveCategoryChipRadius(isHome: false);
 
     return Material(
       color: cs.surface,
@@ -145,7 +152,7 @@ class _UpcomingScreenState extends ConsumerState<UpcomingScreen>
                       final sport = sports[index];
                       final isSelected = sport.toLowerCase() == selectedSport.toLowerCase();
                       return TvFocusable(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(chipRadius),
                         onTap: () {
                           ref.read(selectedSportFilterProvider.notifier).select(sport);
                         },
@@ -153,10 +160,8 @@ class _UpcomingScreenState extends ConsumerState<UpcomingScreen>
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                           decoration: BoxDecoration(
-                            color: isSelected
-                                ? GoPlayTheme.primary
-                                : const Color(0xFF272727),
-                            borderRadius: BorderRadius.circular(20),
+                            color: isSelected ? activeBg : inactiveBg,
+                            borderRadius: BorderRadius.circular(chipRadius),
                           ),
                           child: Text(
                             sport,
@@ -164,7 +169,7 @@ class _UpcomingScreenState extends ConsumerState<UpcomingScreen>
                               fontFamily: GoPlayType.family,
                               fontSize: 12,
                               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              color: isSelected ? const Color(0xFF0F0F0F) : Colors.white,
+                              color: isSelected ? activeTextColor : inactiveTextColor,
                             ),
                           ),
                         ),

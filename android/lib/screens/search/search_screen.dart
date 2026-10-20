@@ -80,19 +80,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final channelsAsync = ref.watch(channelsProvider);
 
     return Scaffold(
-      backgroundColor: GoPlayTheme.surface,
+      backgroundColor: cs.surface,
       body: SafeArea(
         child: Column(
           children: [
             // YouTube-style sleek search bar
             Container(
               padding: const EdgeInsets.fromLTRB(4, 8, 16, 12),
-              decoration: const BoxDecoration(
-                color: GoPlayTheme.surface,
-                border: Border(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                border: const Border(
                   bottom: BorderSide(
                     color: Color(0x1AFFFFFF),
                     width: 0.8,
@@ -188,7 +189,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 }
 
 // ─── Discovery State (Empty Query) ───────────────────────────
-class _EmptySearchState extends StatelessWidget {
+class _EmptySearchState extends ConsumerWidget {
   final AsyncValue<List<Channel>> channelsAsync;
   final ValueChanged<String> onTagSelect;
 
@@ -198,66 +199,60 @@ class _EmptySearchState extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final popularTags = [
-      (label: '⚽ Football', query: 'Football'),
-      (label: '🏏 Cricket', query: 'Cricket'),
-      (label: '🔥 Live', query: 'Live'),
-      (label: '🍿 Movies', query: 'Movies'),
-      (label: '📺 Sports', query: 'Sports'),
-      (label: '🌐 News', query: 'News'),
-      (label: '🎬 Entertainment', query: 'Entertainment'),
-      (label: '🎵 Music', query: 'Music'),
-    ];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uiConfig = ref.watch(uiConfigProvider);
+    final popularTags = uiConfig.searchConfig.popularTags;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
       physics: const BouncingScrollPhysics(),
       children: [
-        // Section 1: Popular Searches
-        Text(
-          'Popular Searches',
-          style: GoPlayType.sectionTitle.copyWith(
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-            color: GoPlayTheme.onSurface,
+        if (popularTags.isNotEmpty) ...[
+          // Section 1: Popular Searches
+          Text(
+            'Popular Searches',
+            style: GoPlayType.sectionTitle.copyWith(
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+              color: GoPlayTheme.onSurface,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 8,
-          runSpacing: 10,
-          children: popularTags.map((tag) {
-            return InkWell(
-              onTap: () => onTagSelect(tag.query),
-              borderRadius: BorderRadius.circular(8),
-              child: Ink(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                decoration: BoxDecoration(
-                  color: GoPlayTheme.surfaceContainer,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0x14FFFFFF),
-                    width: 0.6,
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 10,
+            children: popularTags.map((tag) {
+              return InkWell(
+                onTap: () => onTagSelect(tag.query),
+                borderRadius: BorderRadius.circular(8),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: GoPlayTheme.surfaceContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0x14FFFFFF),
+                      width: 0.6,
+                    ),
+                  ),
+                  child: Text(
+                    tag.label,
+                    style: GoPlayType.label.copyWith(
+                      color: GoPlayTheme.onSurface,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                child: Text(
-                  tag.label,
-                  style: GoPlayType.label.copyWith(
-                    color: GoPlayTheme.onSurface,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 32),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 32),
+        ],
 
         // Section 2: Recommended Channels
         Text(

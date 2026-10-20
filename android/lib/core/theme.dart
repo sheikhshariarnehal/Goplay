@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'typography.dart';
+import '../models/app_ui_config.dart';
 
 /// GoPlay design system.
 ///
@@ -411,7 +412,6 @@ class GoPlayTheme {
         textStyle: GoPlayType.inter(fontSize: GoPlayType.base, color: darkOnSurface),
       ),
 
-      dialogBackgroundColor: darkSurfaceContainerHigh,
       splashColor: primary.withAlpha(20),
       highlightColor: Colors.transparent,
     );
@@ -722,9 +722,92 @@ class GoPlayTheme {
         textStyle: GoPlayType.inter(fontSize: GoPlayType.base, color: lightOnSurface),
       ),
 
-      dialogBackgroundColor: lightSurfaceContainerLow,
       splashColor: primaryDark.withAlpha(15),
       highlightColor: Colors.transparent,
+    );
+  }
+
+  static Color parseHex(String? hexString, {Color defaultColor = primary}) {
+    if (hexString == null || hexString.isEmpty) return defaultColor;
+    try {
+      String clean = hexString.replaceAll('#', '').trim();
+      if (clean.length == 6) clean = 'FF$clean';
+      if (clean.length == 8) return Color(int.parse(clean, radix: 16));
+    } catch (_) {}
+    return defaultColor;
+  }
+
+  static ThemeData buildDynamicTheme(ThemeConfig config) {
+    final dynPrimary = parseHex(config.primaryColor, defaultColor: primary);
+    final dynSurface = parseHex(config.surfaceColor, defaultColor: darkSurface);
+    final dynCard = parseHex(config.cardColor, defaultColor: darkSurfaceContainer);
+
+    final textTheme = _buildTextTheme().apply(
+      fontFamily: GoPlayType.family,
+      bodyColor: darkOnSurface,
+      displayColor: darkOnSurface,
+    );
+
+    final colorScheme = ColorScheme.dark(
+      primary: dynPrimary,
+      onPrimary: darkOnPrimary,
+      primaryContainer: dynPrimary.withValues(alpha: 0.2),
+      onPrimaryContainer: dynPrimary,
+      secondary: dynPrimary,
+      onSecondary: darkOnPrimary,
+      surface: dynSurface,
+      surfaceContainerLowest: dynSurface,
+      surfaceContainerLow: dynSurface,
+      surfaceContainer: dynCard,
+      surfaceContainerHigh: dynCard,
+      surfaceContainerHighest: dynCard,
+      onSurface: darkOnSurface,
+      onSurfaceVariant: darkOnSurfaceVariant,
+      error: error,
+      onError: Colors.white,
+      outline: darkCardBorder,
+      outlineVariant: darkDivider,
+      inverseSurface: darkOnSurface,
+      onInverseSurface: dynSurface,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: dynSurface,
+      canvasColor: dynSurface,
+      splashFactory: InkRipple.splashFactory,
+      visualDensity: VisualDensity.standard,
+      textTheme: textTheme.copyWith(
+        bodyMedium: textTheme.bodyMedium?.copyWith(color: darkOnSurfaceVariant),
+        bodySmall: textTheme.bodySmall?.copyWith(color: darkOnSurfaceMuted),
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: dynSurface,
+        foregroundColor: darkOnSurface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoPlayType.title.copyWith(color: darkOnSurface),
+        iconTheme: IconThemeData(color: darkOnSurface, size: 22),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: dynSurface,
+        selectedItemColor: dynPrimary,
+        unselectedItemColor: darkOnSurfaceMuted,
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+        selectedLabelStyle: GoPlayType.labelSmall.copyWith(fontWeight: FontWeight.w600),
+        unselectedLabelStyle: GoPlayType.labelSmall,
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: dynPrimary,
+        unselectedLabelColor: darkOnSurfaceMuted,
+        indicatorColor: dynPrimary,
+        indicatorSize: TabBarIndicatorSize.label,
+        dividerColor: Colors.transparent,
+      ),
     );
   }
 }

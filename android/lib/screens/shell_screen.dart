@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/app_providers.dart';
 import '../core/typography.dart';
 import '../widgets/tv_focus_wrapper.dart';
 
@@ -11,15 +13,15 @@ import '../widgets/tv_focus_wrapper.dart';
 /// - Bottom nav wrapped in RepaintBoundary (isolated from page scroll repaints).
 /// - Mobile nav items use lightweight InkWell with splash + haptic (no TvFocusable overhead).
 /// - TV rail items keep TvFocusable for D-Pad focus visuals.
-class ShellScreen extends StatefulWidget {
+class ShellScreen extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
   const ShellScreen({super.key, required this.navigationShell});
 
   @override
-  State<ShellScreen> createState() => _ShellScreenState();
+  ConsumerState<ShellScreen> createState() => _ShellScreenState();
 }
 
-class _ShellScreenState extends State<ShellScreen> {
+class _ShellScreenState extends ConsumerState<ShellScreen> {
   late final List<FocusNode> _navFocusNodes;
 
   @override
@@ -48,6 +50,7 @@ class _ShellScreenState extends State<ShellScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final index = widget.navigationShell.currentIndex;
 
     // Scoped MediaQuery reads. `MediaQuery.of(context)` subscribes to every
@@ -67,14 +70,21 @@ class _ShellScreenState extends State<ShellScreen> {
 
     if (isDesktop) {
       content = Scaffold(
+        backgroundColor: cs.surface,
         body: Row(
           children: [
             // Side Navigation Rail — D-Pad friendly
             RepaintBoundary(
               child: Container(
                 width: 72,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0F0F0F),
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  border: Border(
+                    right: BorderSide(
+                      color: cs.outline.withValues(alpha: 0.15),
+                      width: 0.8,
+                    ),
+                  ),
                 ),
                 child: SafeArea(
                   child: Column(
@@ -88,33 +98,40 @@ class _ShellScreenState extends State<ShellScreen> {
                         isSelected: index == 0,
                         onTap: () => _goBranch(0),
                       ),
-                      const SizedBox(height: 8),
-                      _RailNavItem(
-                        focusNode: _navFocusNodes[1],
-                        icon: Icons.category_outlined,
-                        selectedIcon: Icons.category_rounded,
-                        label: 'Categories',
-                        isSelected: index == 1,
-                        onTap: () => _goBranch(1),
-                      ),
-                      const SizedBox(height: 8),
-                      _RailNavItem(
-                        focusNode: _navFocusNodes[2],
-                        icon: Icons.smart_display_outlined,
-                        selectedIcon: Icons.smart_display_rounded,
-                        label: 'Channels',
-                        isSelected: index == 2,
-                        onTap: () => _goBranch(2),
-                      ),
-                      const SizedBox(height: 8),
-                      _RailNavItem(
-                        focusNode: _navFocusNodes[3],
-                        icon: Icons.sports_soccer_outlined,
-                        selectedIcon: Icons.sports_soccer_rounded,
-                        label: 'Events',
-                        isSelected: index == 3,
-                        onTap: () => _goBranch(3),
-                      ),
+                      if (ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('categories')) ...[
+                        const SizedBox(height: 8),
+                        _RailNavItem(
+                          focusNode: _navFocusNodes[1],
+                          icon: Icons.category_outlined,
+                          selectedIcon: Icons.category_rounded,
+                          label: 'Categories',
+                          isSelected: index == 1,
+                          onTap: () => _goBranch(1),
+                        ),
+                      ],
+                      if (ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('channels')) ...[
+                        const SizedBox(height: 8),
+                        _RailNavItem(
+                          focusNode: _navFocusNodes[2],
+                          icon: Icons.smart_display_outlined,
+                          selectedIcon: Icons.smart_display_rounded,
+                          label: 'Channels',
+                          isSelected: index == 2,
+                          onTap: () => _goBranch(2),
+                        ),
+                      ],
+                      if (ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('upcoming') ||
+                          ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('events')) ...[
+                        const SizedBox(height: 8),
+                        _RailNavItem(
+                          focusNode: _navFocusNodes[3],
+                          icon: Icons.sports_soccer_outlined,
+                          selectedIcon: Icons.sports_soccer_rounded,
+                          label: 'Events',
+                          isSelected: index == 3,
+                          onTap: () => _goBranch(3),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -128,13 +145,20 @@ class _ShellScreenState extends State<ShellScreen> {
       );
     } else {
       content = Scaffold(
+        backgroundColor: cs.surface,
         extendBody: false,
         body: widget.navigationShell,
         bottomNavigationBar: RepaintBoundary(
           child: Container(
             height: 64 + bottomPadding,
-            decoration: const BoxDecoration(
-              color: Color(0xFF0F0F0F),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              border: Border(
+                top: BorderSide(
+                  color: cs.outline.withValues(alpha: 0.15),
+                  width: 0.8,
+                ),
+              ),
             ),
             padding: EdgeInsets.only(bottom: bottomPadding),
             child: Row(
@@ -147,30 +171,34 @@ class _ShellScreenState extends State<ShellScreen> {
                   isSelected: index == 0,
                   onTap: () => _goBranch(0),
                 ),
-                _NavItem(
-                  focusNode: _navFocusNodes[1],
-                  icon: Icons.category_outlined,
-                  selectedIcon: Icons.category_rounded,
-                  label: 'Categories',
-                  isSelected: index == 1,
-                  onTap: () => _goBranch(1),
-                ),
-                _NavItem(
-                  focusNode: _navFocusNodes[2],
-                  icon: Icons.smart_display_outlined,
-                  selectedIcon: Icons.smart_display_rounded,
-                  label: 'Channels',
-                  isSelected: index == 2,
-                  onTap: () => _goBranch(2),
-                ),
-                _NavItem(
-                  focusNode: _navFocusNodes[3],
-                  icon: Icons.sports_soccer_outlined,
-                  selectedIcon: Icons.sports_soccer_rounded,
-                  label: 'Events',
-                  isSelected: index == 3,
-                  onTap: () => _goBranch(3),
-                ),
+                if (ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('categories'))
+                  _NavItem(
+                    focusNode: _navFocusNodes[1],
+                    icon: Icons.category_outlined,
+                    selectedIcon: Icons.category_rounded,
+                    label: 'Categories',
+                    isSelected: index == 1,
+                    onTap: () => _goBranch(1),
+                  ),
+                if (ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('channels'))
+                  _NavItem(
+                    focusNode: _navFocusNodes[2],
+                    icon: Icons.smart_display_outlined,
+                    selectedIcon: Icons.smart_display_rounded,
+                    label: 'Channels',
+                    isSelected: index == 2,
+                    onTap: () => _goBranch(2),
+                  ),
+                if (ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('upcoming') ||
+                    ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('events'))
+                  _NavItem(
+                    focusNode: _navFocusNodes[3],
+                    icon: Icons.sports_soccer_outlined,
+                    selectedIcon: Icons.sports_soccer_rounded,
+                    label: 'Events',
+                    isSelected: index == 3,
+                    onTap: () => _goBranch(3),
+                  ),
               ],
             ),
           ),

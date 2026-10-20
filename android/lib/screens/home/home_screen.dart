@@ -46,22 +46,6 @@ const _kInterSearchHint = TextStyle(
   height: GoPlayType.leadingSnug,
 );
 
-const _kInterChipSelected = TextStyle(
-  fontFamily: GoPlayType.family,
-  color: Color(0xFF0F0F0F),
-  fontSize: GoPlayType.sm,
-  fontWeight: FontWeight.w700,
-  height: GoPlayType.leadingSnug,
-);
-
-const _kInterChipUnselected = TextStyle(
-  fontFamily: GoPlayType.family,
-  color: Colors.white,
-  fontSize: GoPlayType.sm,
-  fontWeight: FontWeight.w500,
-  height: GoPlayType.leadingSnug,
-);
-
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -72,20 +56,22 @@ class HomeScreen extends ConsumerWidget {
     final cache = ref.watch(cacheServiceProvider);
     final localChannels = cache.getLocalChannels();
 
+    final cs = Theme.of(context).colorScheme;
+
     // If local cache is empty, we must show loading/error states for the initial sync.
     if (localChannels.isEmpty) {
       return syncState.when(
         data: (_) => _buildMainContent(context, ref),
-        loading: () => const Material(
-          color: GoPlayTheme.surface,
-          child: Center(
+        loading: () => Material(
+          color: cs.surface,
+          child: const Center(
             child: CircularProgressIndicator(
               color: GoPlayTheme.primary,
             ),
           ),
         ),
         error: (error, stack) => Material(
-          color: GoPlayTheme.surface,
+          color: cs.surface,
           child: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -150,8 +136,9 @@ class HomeScreen extends ConsumerWidget {
   }
 
   Widget _buildMainContent(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
     return Material(
-      color: GoPlayTheme.surface,
+      color: cs.surface,
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         cacheExtent: 600.0,
@@ -199,7 +186,7 @@ class HomeScreen extends ConsumerWidget {
                           child: Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              'GOPLAY',
+                              ref.watch(uiConfigProvider).navigationBranding.brandWordmark,
                               style: GoPlayType.wordmark.copyWith(
                                 color: GoPlayTheme.onSurface,
                                 // Lerps between two on-scale steps so the
@@ -291,12 +278,29 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
 
-          // Hero Banner
-          const SliverToBoxAdapter(
-            child: RepaintBoundary(child: _HeroBanner()),
-          ),
+          ..._buildModularSections(context, ref),
 
-          // Trending Channels
+          // Bottom padding
+          const SliverToBoxAdapter(child: SizedBox(height: 80)),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildModularSections(BuildContext context, WidgetRef ref) {
+    final uiConfig = ref.watch(uiConfigProvider);
+    final homeConfig = uiConfig.homeScreen;
+    final order = homeConfig.sectionOrder;
+
+    final widgets = <Widget>[];
+
+    for (final sectionKey in order) {
+      if (sectionKey == 'hero' && homeConfig.showHeroBanner) {
+        widgets.add(const SliverToBoxAdapter(
+          child: RepaintBoundary(child: _HeroBanner()),
+        ));
+      } else if (sectionKey == 'trending' && homeConfig.showTrendingSection) {
+        widgets.addAll([
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
           SliverToBoxAdapter(
             child: SectionHeader(
@@ -311,8 +315,9 @@ class HomeScreen extends ConsumerWidget {
           const SliverToBoxAdapter(
             child: RepaintBoundary(child: _TrendingChannels()),
           ),
-
-          // Today's Matches
+        ]);
+      } else if (sectionKey == 'matches' && homeConfig.showTodaysMatches) {
+        widgets.addAll([
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
           SliverToBoxAdapter(
             child: SectionHeader(
@@ -328,22 +333,39 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
           const _TodaySchedule(),
+        ]);
+      } else if (sectionKey == 'recent' && homeConfig.showRecentlyWatched) {
+        widgets.add(const SliverToBoxAdapter(
+          child: RepaintBoundary(child: _RecentlyWatched()),
+        ));
+      } else if (sectionKey == 'announcements' && homeConfig.showAnnouncements) {
+        widgets.add(const SliverToBoxAdapter(
+          child: RepaintBoundary(child: _AnnouncementsSection()),
+        ));
+      }
+    }
 
-          // Recently Watched
-          const SliverToBoxAdapter(
-            child: RepaintBoundary(child: _RecentlyWatched()),
+    // Safety fallback: if all sections turned off, show at least trending channels
+    if (widgets.isEmpty) {
+      widgets.addAll([
+        const SliverToBoxAdapter(child: SizedBox(height: 20)),
+        SliverToBoxAdapter(
+          child: SectionHeader(
+            title: 'Trending Channels',
+            actionLabel: 'See all',
+            onAction: () {
+              ref.read(selectedCategoryProvider.notifier).select('trending');
+              context.go('/channels');
+            },
           ),
+        ),
+        const SliverToBoxAdapter(
+          child: RepaintBoundary(child: _TrendingChannels()),
+        ),
+      ]);
+    }
 
-          // Announcements
-          const SliverToBoxAdapter(
-            child: RepaintBoundary(child: _AnnouncementsSection()),
-          ),
-
-          // Bottom padding
-          const SliverToBoxAdapter(child: SizedBox(height: 80)),
-        ],
-      ),
-    );
+    return widgets;
   }
 }
 
@@ -374,7 +396,10 @@ class _HeroBannerState extends ConsumerState<_HeroBanner> {
     _bannerCount = count;
     if (count <= 1) return;
 
-    _autoScrollTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    final speed = ref.read(uiConfigProvider).homeScreen.heroBannerAutoplaySpeed;
+    final interval = Duration(seconds: speed > 0 ? speed : 5);
+
+    _autoScrollTimer = Timer.periodic(interval, (timer) {
       if (!_pageController.hasClients) return;
       final nextPage = (_currentPage.value + 1) % _bannerCount;
       _pageController.animateToPage(
@@ -645,6 +670,13 @@ class _SportCategoryFilterChips extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sportsAsync = ref.watch(sortedSportCategoriesProvider);
     final selectedSport = ref.watch(selectedSportFilterProvider);
+    final uiConfig = ref.watch(uiConfigProvider);
+
+    final activeBg = GoPlayTheme.parseHex(uiConfig.resolveCategoryChipActiveBg(isHome: true));
+    final inactiveBg = GoPlayTheme.parseHex(uiConfig.resolveCategoryChipInactiveBg(isHome: true));
+    final activeTextColor = GoPlayTheme.parseHex(uiConfig.resolveCategoryChipActiveTextColor(isHome: true));
+    final inactiveTextColor = GoPlayTheme.parseHex(uiConfig.resolveCategoryChipInactiveTextColor(isHome: true));
+    final chipRadius = uiConfig.resolveCategoryChipRadius(isHome: true);
 
     return sportsAsync.when(
       data: (sportsList) {
@@ -662,7 +694,7 @@ class _SportCategoryFilterChips extends ConsumerWidget {
               final isSelected = selectedSport.toLowerCase() == sport.toLowerCase();
 
               return TvFocusable(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(chipRadius),
                 onTap: () {
                   ref.read(selectedSportFilterProvider.notifier).select(sport);
                 },
@@ -670,15 +702,19 @@ class _SportCategoryFilterChips extends ConsumerWidget {
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? GoPlayTheme.primary
-                        : const Color(0xFF272727),
-                    borderRadius: BorderRadius.circular(8),
+                    color: isSelected ? activeBg : inactiveBg,
+                    borderRadius: BorderRadius.circular(chipRadius),
                   ),
                   child: Center(
                     child: Text(
                       sport,
-                      style: isSelected ? _kInterChipSelected : _kInterChipUnselected,
+                      style: TextStyle(
+                        fontFamily: GoPlayType.family,
+                        fontSize: GoPlayType.sm,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        color: isSelected ? activeTextColor : inactiveTextColor,
+                        height: GoPlayType.leadingSnug,
+                      ),
                     ),
                   ),
                 ),

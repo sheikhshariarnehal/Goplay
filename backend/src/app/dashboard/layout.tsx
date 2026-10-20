@@ -7,19 +7,20 @@ import { useAuth } from '../../providers/auth-provider';
 import { createAdminSupabaseClient } from '../../utils/supabase';
 import {
   Layers, Tv, Calendar, Bell, Shield, LogOut,
-  ChevronRight, Activity, Menu, X, Search, Sparkles, List, Users, TrendingUp, Image as ImageIcon, Radio, Workflow,
+  ChevronRight, Activity, Menu, X, Search, Sparkles, List, Users, TrendingUp, Image as ImageIcon, Radio, Workflow, Sliders,
 } from 'lucide-react';
 
 interface NavItem {
   label: string;
   href: string;
-  icon: any;
+  icon: React.ComponentType<{ className?: string }>;
   badge?: string;
 }
 
 const navItems: NavItem[] = [
   { label: 'Overview', href: '/dashboard/overview', icon: Activity },
   { label: 'Live TV Studio', href: '/dashboard/livetv', icon: Radio },
+  { label: 'App UI Studio', href: '/dashboard/app-ui', icon: Sliders, badge: 'DYNAMIC' },
   { label: 'Automations & Sync', href: '/dashboard/automations', icon: Workflow, badge: 'AUTO' },
   { label: 'Categories', href: '/dashboard/categories', icon: Layers },
   { label: 'Channels', href: '/dashboard/channels', icon: Tv },

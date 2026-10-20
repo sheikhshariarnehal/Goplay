@@ -29,7 +29,7 @@ class ChannelAvatar extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: GoPlayTheme.surfaceContainerHigh,
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         shape: BoxShape.circle,
         border: showBorder
             ? Border.all(

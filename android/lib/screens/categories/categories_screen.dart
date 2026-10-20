@@ -138,10 +138,11 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
   }
 
   int _calculateCategoryColumns(BuildContext context) {
+    final configured = ref.watch(uiConfigProvider).categoriesScreen.categoryGridColumns;
     final width = MediaQuery.sizeOf(context).width;
-    if (width >= 1200) return 4;
-    if (width >= 720) return 3;
-    return 2; // 2-columns on standard mobile
+    if (width >= 1200) return math.max(4, configured);
+    if (width >= 720) return math.max(3, configured);
+    return (configured >= 1 && configured <= 4) ? configured : 2;
   }
 
   double _calculateCategoryAspectRatio(int columns) {
@@ -204,7 +205,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: GoPlayTheme.darkSurface,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         body: SafeArea(
           bottom: false,
           child: AnimatedSwitcher(
@@ -442,20 +443,22 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
       actions: _isCategorySearchOpen
           ? null
           : [
-              IconButton(
-                tooltip: 'Search categories',
-                icon: Icon(Icons.search_rounded, color: cs.onSurface, size: 22),
-                onPressed: _toggleCategorySearch,
-              ),
-              IconButton(
-                tooltip: _filterFavoriteCategories ? 'Show all categories' : 'Filter favorites',
-                icon: Icon(
-                  _filterFavoriteCategories ? Icons.star_rounded : Icons.star_outline_rounded,
-                  color: _filterFavoriteCategories ? GoPlayTheme.primary : cs.onSurface,
-                  size: 24,
+              if (ref.watch(uiConfigProvider).categoriesScreen.showCategorySearch)
+                IconButton(
+                  tooltip: 'Search categories',
+                  icon: Icon(Icons.search_rounded, color: cs.onSurface, size: 22),
+                  onPressed: _toggleCategorySearch,
                 ),
-                onPressed: _toggleCategoryFavoritesFilter,
-              ),
+              if (ref.watch(uiConfigProvider).categoriesScreen.showCategoryFavorites)
+                IconButton(
+                  tooltip: _filterFavoriteCategories ? 'Show all categories' : 'Filter favorites',
+                  icon: Icon(
+                    _filterFavoriteCategories ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: _filterFavoriteCategories ? cs.primary : cs.onSurface,
+                    size: 24,
+                  ),
+                  onPressed: _toggleCategoryFavoritesFilter,
+                ),
               const AppOverflowMenu(iconColor: Colors.white),
               const SizedBox(width: 8),
             ],
@@ -802,7 +805,7 @@ class _SearchField extends StatelessWidget {
 // ==========================================
 //    PILL CATEGORY CARD (2-COLUMN GRID)
 // ==========================================
-class _CategoryPillCard extends StatelessWidget {
+class _CategoryPillCard extends ConsumerWidget {
   final Category category;
   final int? channelCount;
   final VoidCallback onTap;
@@ -814,7 +817,8 @@ class _CategoryPillCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final catConfig = ref.watch(uiConfigProvider).categoriesScreen;
     final visuals = CategoryVisuals.resolve(category);
     final count = channelCount;
     final countText = (count != null && count > 0)
@@ -839,8 +843,10 @@ class _CategoryPillCard extends StatelessWidget {
         child: Row(
           children: [
             // Avatar plate (40x40)
-            _buildAvatar(visuals),
-            const SizedBox(width: 10),
+            if (catConfig.showCategoryEmblems) ...[
+              _buildAvatar(visuals),
+              const SizedBox(width: 10),
+            ],
 
             // Category Name and Channel Count
             Expanded(
@@ -861,7 +867,7 @@ class _CategoryPillCard extends StatelessWidget {
                       height: 1.2,
                     ),
                   ),
-                  if (countText != null) ...[
+                  if (catConfig.showCategoryChannelCounts && countText != null) ...[
                     const SizedBox(height: 2),
                     Text(
                       countText,
