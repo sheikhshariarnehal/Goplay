@@ -1379,7 +1379,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
               ),
               padding: EdgeInsets.only(
                 top: widget.isFullscreen ? 22.0 : 8.0,
-                bottom: widget.isFullscreen ? 10.0 : 2.0,
+                bottom: widget.isFullscreen ? 10.0 : 8.0,
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -1391,31 +1391,34 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Seek Bar / Timeline — wrapped in focusable seek widget
-                      RepaintBoundary(
-                        child: _FocusableSeekBar(
-                          position: _position,
-                          duration: _duration,
-                          bufferedPosition: _bufferedPosition,
-                          onSeek: _seekTo,
-                          onScrubbingChanged: (scrubbing) {
-                            setState(() {
-                              _isScrubbing = scrubbing;
-                            });
-                          },
-                          isFullscreen: widget.isFullscreen,
-                          onSeekRelative: _seekRelative,
-                          onInteract: widget.onInteract,
-                          focusNode: _seekBarFocusNode,
-                          onFocusDown: () => _bottomControlsFocusNode.requestFocus(),
-                          onFocusUp: () {
-                            if (widget.playPauseFocusNode != null) {
-                              widget.playPauseFocusNode!.requestFocus();
-                            } else {
-                              final ctx = _playPauseKey.currentContext;
-                              if (ctx != null) Focus.of(ctx).requestFocus();
-                            }
-                          },
+                      // Seek Bar / Timeline — inset horizontally to align with bottom buttons & time row
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: hPadding),
+                        child: RepaintBoundary(
+                          child: _FocusableSeekBar(
+                            position: _position,
+                            duration: _duration,
+                            bufferedPosition: _bufferedPosition,
+                            onSeek: _seekTo,
+                            onScrubbingChanged: (scrubbing) {
+                              setState(() {
+                                _isScrubbing = scrubbing;
+                              });
+                            },
+                            isFullscreen: widget.isFullscreen,
+                            onSeekRelative: _seekRelative,
+                            onInteract: widget.onInteract,
+                            focusNode: _seekBarFocusNode,
+                            onFocusDown: () => _bottomControlsFocusNode.requestFocus(),
+                            onFocusUp: () {
+                              if (widget.playPauseFocusNode != null) {
+                                widget.playPauseFocusNode!.requestFocus();
+                              } else {
+                                final ctx = _playPauseKey.currentContext;
+                                if (ctx != null) Focus.of(ctx).requestFocus();
+                              }
+                            },
+                          ),
                         ),
                       ),
 
@@ -1661,35 +1664,52 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Volume Button
+        // 1. Picture-in-Picture Button
+        TvFocusable(
+          isCircle: true,
+          focusColor: GoPlayTheme.primary,
+          onTap: _enterPiP,
+          child: const Padding(
+            padding: EdgeInsets.all(6),
+            child: Icon(
+              Icons.picture_in_picture_alt_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+
+        // 2. Volume Button
         TvFocusable(
           isCircle: true,
           focusColor: GoPlayTheme.primary,
           onTap: _toggleMute,
           child: Padding(
-            padding: const EdgeInsets.all(7),
+            padding: const EdgeInsets.all(6),
             child: Icon(
               _isMuted || _volume == 0
                   ? Icons.volume_off_rounded
                   : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
               color: Colors.white,
-              size: 26,
+              size: 24,
             ),
           ),
         ),
         const SizedBox(width: 6),
-        // Fullscreen Toggle Button
+
+        // 3. Fullscreen Toggle Button
         if (widget.onFullscreenToggle != null)
           TvFocusable(
             isCircle: true,
             focusColor: GoPlayTheme.primary,
             onTap: widget.onFullscreenToggle,
             child: Padding(
-              padding: const EdgeInsets.all(7),
+              padding: const EdgeInsets.all(6),
               child: Icon(
                 widget.isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
                 color: Colors.white,
-                size: 26,
+                size: 24,
               ),
             ),
           ),
@@ -2620,7 +2640,7 @@ class _PlayerProgressBarState extends State<PlayerProgressBar> {
               onHorizontalDragCancel: () => _onDragCancel(),
               onTapDown: (details) => _onTapDown(context, details.localPosition.dx),
               child: SizedBox(
-                height: 30.0,
+                height: widget.isFullscreen ? 28.0 : 20.0,
                 width: double.infinity,
                 child: Center(
                   child: CustomPaint(
