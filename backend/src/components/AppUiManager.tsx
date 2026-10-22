@@ -7,7 +7,7 @@ import {
   MessageCircle, AlertOctagon, CheckCircle2, RefreshCw, Undo2, Save,
   ArrowUp, ArrowDown, Plus, Trash2, ShieldAlert, Sparkles,
   Check, Sliders, Monitor, SlidersHorizontal, Settings2, Heart, Radio, Activity,
-  RotateCcw
+  RotateCcw, Flame, Link2, Unlink
 } from 'lucide-react';
 
 interface AppUiManagerProps {
@@ -28,6 +28,7 @@ const DEFAULT_UI_CONFIG = {
     show_tab_counts: true,
     show_trending_tab: true,
     show_favorite_tab: true,
+    auto_hide_favorite_tab_when_empty: true,
     show_all_tab: true,
     channel_grid_columns: 3,
     card_layout_mode: 'compact',
@@ -131,6 +132,19 @@ const DEFAULT_UI_CONFIG = {
       border_radius: 14.0,
       live_badge_color: '#FF2B2B',
       elevation: 0.0,
+      enable_glow: true,
+      hot_badge: {
+        enabled: true,
+        text: 'HOT',
+        bg_color: '#C8FF00',
+        text_color: '#0F0F0F',
+        radius_top_left: 14.0,
+        radius_top_right: 0.0,
+        radius_bottom_left: 0.0,
+        radius_bottom_right: 11.0,
+        is_radius_linked: false,
+        position: 'bottom_right' as 'bottom_right' | 'top_right' | 'top_left' | 'bottom_left',
+      },
     },
     channel_card: {
       use_custom_override: false,
@@ -264,6 +278,10 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
               event_card: {
                 ...DEFAULT_UI_CONFIG.component_styles.event_card,
                 ...(data.ui_config?.component_styles?.event_card || {}),
+                hot_badge: {
+                  ...DEFAULT_UI_CONFIG.component_styles.event_card.hot_badge,
+                  ...(data.ui_config?.component_styles?.event_card?.hot_badge || {}),
+                },
               },
               channel_card: {
                 ...DEFAULT_UI_CONFIG.component_styles.channel_card,
@@ -419,6 +437,17 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
         ...prev.component_styles,
         [compKey]: updater(prev.component_styles[compKey]),
       },
+    }));
+  };
+
+  const updateHotBadge = (
+    updater: (
+      prev: typeof DEFAULT_UI_CONFIG.component_styles.event_card.hot_badge
+    ) => typeof DEFAULT_UI_CONFIG.component_styles.event_card.hot_badge
+  ) => {
+    updateComponentStyle('event_card', (s) => ({
+      ...s,
+      hot_badge: updater(s.hot_badge || DEFAULT_UI_CONFIG.component_styles.event_card.hot_badge),
     }));
   };
 
@@ -921,7 +950,7 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
                         )}
                       </h3>
                       <p className="text-xs text-zinc-400 mt-1">
-                        When enabled, Event Cards use custom background, borders, radius, and badge colors instead of the universal theme card color.
+                        When enabled, uses a custom container background color. Corner radius, border width, and badge colors configured below are always applied.
                       </p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -1076,6 +1105,359 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
                         />
                       </div>
                     </div>
+
+                    {/* Outer Card Glow Effect Toggle */}
+                    <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-semibold text-zinc-200 block">
+                          Outer Card Glow Effect
+                        </span>
+                        <span className="text-[11px] text-zinc-400">
+                          Renders a vibrant ambient neon aura box-shadow around live match event cards
+                        </span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={config.component_styles.event_card.enable_glow ?? true}
+                          onChange={(e) =>
+                            updateComponentStyle('event_card', (s) => ({
+                              ...s,
+                              enable_glow: e.target.checked,
+                            }))
+                          }
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-lime-400" />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* ── HOT / Featured Badge Studio ── */}
+                  <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-lime-400/10 border border-lime-400/30 flex items-center justify-center text-lime-400">
+                          <Flame className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-200">
+                            HOT / Featured Badge Studio
+                          </h3>
+                          <p className="text-[11px] text-zinc-400">
+                            Configure tag text, palette, corner placement, and 4-corner radii for featured events
+                          </p>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={config.component_styles.event_card.hot_badge?.enabled ?? true}
+                          onChange={(e) =>
+                            updateHotBadge((b) => ({ ...b, enabled: e.target.checked }))
+                          }
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-lime-400" />
+                      </label>
+                    </div>
+
+                    {(config.component_styles.event_card.hot_badge?.enabled ?? true) && (
+                      <div className="space-y-4">
+                        {/* Label Text & Placement */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Badge Label Text */}
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold text-zinc-300">Badge Label Text</label>
+                            <input
+                              type="text"
+                              value={config.component_styles.event_card.hot_badge?.text ?? 'HOT'}
+                              onChange={(e) =>
+                                updateHotBadge((b) => ({ ...b, text: e.target.value }))
+                              }
+                              placeholder="e.g. HOT, FEATURED, LIVE NOW"
+                              className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-semibold text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-lime-400"
+                            />
+                          </div>
+
+                          {/* Corner Placement */}
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold text-zinc-300">Corner Placement</label>
+                            <div className="grid grid-cols-4 gap-1.5 bg-zinc-950 p-1 rounded-lg border border-zinc-700">
+                              {[
+                                { id: 'bottom_right', label: 'Bottom-R' },
+                                { id: 'top_right', label: 'Top-R' },
+                                { id: 'top_left', label: 'Top-L' },
+                                { id: 'bottom_left', label: 'Bottom-L' },
+                              ].map((pos) => {
+                                const active =
+                                  (config.component_styles.event_card.hot_badge?.position ?? 'bottom_right') === pos.id;
+                                return (
+                                  <button
+                                    key={pos.id}
+                                    type="button"
+                                    onClick={() =>
+                                      updateHotBadge((b) => ({
+                                        ...b,
+                                        position: pos.id as any,
+                                      }))
+                                    }
+                                    className={`px-2 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
+                                      active
+                                        ? 'bg-lime-400 text-zinc-950 shadow-sm'
+                                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                                    }`}
+                                  >
+                                    {pos.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Palette Colors */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Background Color */}
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold text-zinc-300">Badge Background Color</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="color"
+                                value={config.component_styles.event_card.hot_badge?.bg_color ?? '#C8FF00'}
+                                onChange={(e) =>
+                                  updateHotBadge((b) => ({ ...b, bg_color: e.target.value }))
+                                }
+                                className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0"
+                              />
+                              <input
+                                type="text"
+                                value={config.component_styles.event_card.hot_badge?.bg_color ?? '#C8FF00'}
+                                onChange={(e) =>
+                                  updateHotBadge((b) => ({ ...b, bg_color: e.target.value }))
+                                }
+                                className="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono text-zinc-200 uppercase"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Text Color */}
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold text-zinc-300">Badge Text Color</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="color"
+                                value={config.component_styles.event_card.hot_badge?.text_color ?? '#0F0F0F'}
+                                onChange={(e) =>
+                                  updateHotBadge((b) => ({ ...b, text_color: e.target.value }))
+                                }
+                                className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0"
+                              />
+                              <input
+                                type="text"
+                                value={config.component_styles.event_card.hot_badge?.text_color ?? '#0F0F0F'}
+                                onChange={(e) =>
+                                  updateHotBadge((b) => ({ ...b, text_color: e.target.value }))
+                                }
+                                className="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono text-zinc-200 uppercase"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 4-Corner Radius Control (Figma style) */}
+                        <div className="pt-3 border-t border-zinc-800 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs font-semibold text-zinc-300">
+                                Badge Corner Radii Control
+                              </label>
+                              <span className="text-[10px] text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded">
+                                {config.component_styles.event_card.hot_badge?.is_radius_linked
+                                  ? 'Uniform (Linked)'
+                                  : 'Independent 4-Corners'}
+                              </span>
+                            </div>
+
+                            {/* Link / Unlink toggle button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentLinked =
+                                  config.component_styles.event_card.hot_badge?.is_radius_linked ?? false;
+                                if (!currentLinked) {
+                                  // When linking, synchronize all corners to top-left
+                                  const uniformVal =
+                                    config.component_styles.event_card.hot_badge?.radius_top_left ?? 14.0;
+                                  updateHotBadge((b) => ({
+                                    ...b,
+                                    is_radius_linked: true,
+                                    radius_top_left: uniformVal,
+                                    radius_top_right: uniformVal,
+                                    radius_bottom_left: uniformVal,
+                                    radius_bottom_right: uniformVal,
+                                  }));
+                                } else {
+                                  updateHotBadge((b) => ({ ...b, is_radius_linked: false }));
+                                }
+                              }}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                                config.component_styles.event_card.hot_badge?.is_radius_linked
+                                  ? 'bg-lime-400/10 border-lime-400/40 text-lime-400'
+                                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                              }`}
+                              title={
+                                config.component_styles.event_card.hot_badge?.is_radius_linked
+                                  ? 'Click to adjust individual corners'
+                                  : 'Click to link all corners together'
+                              }
+                            >
+                              {config.component_styles.event_card.hot_badge?.is_radius_linked ? (
+                                <>
+                                  <Link2 className="w-3.5 h-3.5" />
+                                  <span>Linked</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Unlink className="w-3.5 h-3.5" />
+                                  <span>Unlinked</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Radius Sliders */}
+                          {config.component_styles.event_card.hot_badge?.is_radius_linked ? (
+                            // Uniform Slider
+                            <div className="space-y-2 bg-zinc-950/60 p-3 rounded-xl border border-zinc-800/80">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-zinc-400">All Corners Radius</span>
+                                <span className="text-xs font-mono font-bold text-lime-400">
+                                  {config.component_styles.event_card.hot_badge?.radius_top_left ?? 14}px
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="24"
+                                step="1"
+                                value={config.component_styles.event_card.hot_badge?.radius_top_left ?? 14}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  updateHotBadge((b) => ({
+                                    ...b,
+                                    radius_top_left: val,
+                                    radius_top_right: val,
+                                    radius_bottom_left: val,
+                                    radius_bottom_right: val,
+                                  }));
+                                }}
+                                className="w-full accent-lime-400 cursor-pointer"
+                              />
+                            </div>
+                          ) : (
+                            // 4 Independent Corner Sliders in 2x2 Grid
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800/80">
+                              {/* Top-Left */}
+                              <div className="space-y-1.5 p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/50">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-semibold text-zinc-300">Top-Left Radius</span>
+                                  <span className="text-xs font-mono font-bold text-lime-400">
+                                    {config.component_styles.event_card.hot_badge?.radius_top_left ?? 14}px
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="24"
+                                  step="1"
+                                  value={config.component_styles.event_card.hot_badge?.radius_top_left ?? 14}
+                                  onChange={(e) =>
+                                    updateHotBadge((b) => ({
+                                      ...b,
+                                      radius_top_left: parseFloat(e.target.value),
+                                    }))
+                                  }
+                                  className="w-full accent-lime-400 cursor-pointer"
+                                />
+                              </div>
+
+                              {/* Top-Right */}
+                              <div className="space-y-1.5 p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/50">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-semibold text-zinc-300">Top-Right Radius</span>
+                                  <span className="text-xs font-mono font-bold text-lime-400">
+                                    {config.component_styles.event_card.hot_badge?.radius_top_right ?? 0}px
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="24"
+                                  step="1"
+                                  value={config.component_styles.event_card.hot_badge?.radius_top_right ?? 0}
+                                  onChange={(e) =>
+                                    updateHotBadge((b) => ({
+                                      ...b,
+                                      radius_top_right: parseFloat(e.target.value),
+                                    }))
+                                  }
+                                  className="w-full accent-lime-400 cursor-pointer"
+                                />
+                              </div>
+
+                              {/* Bottom-Left */}
+                              <div className="space-y-1.5 p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/50">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-semibold text-zinc-300">Bottom-Left Radius</span>
+                                  <span className="text-xs font-mono font-bold text-lime-400">
+                                    {config.component_styles.event_card.hot_badge?.radius_bottom_left ?? 0}px
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="24"
+                                  step="1"
+                                  value={config.component_styles.event_card.hot_badge?.radius_bottom_left ?? 0}
+                                  onChange={(e) =>
+                                    updateHotBadge((b) => ({
+                                      ...b,
+                                      radius_bottom_left: parseFloat(e.target.value),
+                                    }))
+                                  }
+                                  className="w-full accent-lime-400 cursor-pointer"
+                                />
+                              </div>
+
+                              {/* Bottom-Right */}
+                              <div className="space-y-1.5 p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/50">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-semibold text-zinc-300">Bottom-Right Radius</span>
+                                  <span className="text-xs font-mono font-bold text-lime-400">
+                                    {config.component_styles.event_card.hot_badge?.radius_bottom_right ?? 11}px
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="24"
+                                  step="1"
+                                  value={config.component_styles.event_card.hot_badge?.radius_bottom_right ?? 11}
+                                  onChange={(e) =>
+                                    updateHotBadge((b) => ({
+                                      ...b,
+                                      radius_bottom_right: parseFloat(e.target.value),
+                                    }))
+                                  }
+                                  className="w-full accent-lime-400 cursor-pointer"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Event Card Specimen Preview */}
@@ -1088,7 +1470,7 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
                       style={{ backgroundColor: config.theme.surface_color }}
                     >
                       <div
-                        className="w-full max-w-md p-3.5 transition-all shadow-md relative"
+                        className="w-full max-w-md p-3.5 transition-all relative overflow-hidden"
                         style={{
                           backgroundColor: config.component_styles.event_card.use_custom_override
                             ? config.component_styles.event_card.background_color
@@ -1099,6 +1481,13 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
                               ? config.component_styles.event_card.border_color
                               : config.theme.primary_color
                           }`,
+                          boxShadow: (config.component_styles.event_card.enable_glow ?? true)
+                            ? `0 0 16px ${
+                                config.component_styles.event_card.use_custom_override
+                                  ? config.component_styles.event_card.border_color
+                                  : config.theme.primary_color
+                              }44, 0 4px 12px rgba(0,0,0,0.4)`
+                            : '0 4px 12px rgba(0,0,0,0.3)',
                         }}
                       >
                         {/* Top Header */}
@@ -1136,6 +1525,40 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
                             </div>
                           </div>
                         </div>
+
+                        {/* HOT / Featured Badge Preview */}
+                        {(config.component_styles.event_card.hot_badge?.enabled ?? true) && (
+                          <div
+                            className="absolute text-[8.5px] font-black uppercase px-2 py-0.5 tracking-wider select-none leading-tight"
+                            style={{
+                              backgroundColor:
+                                config.component_styles.event_card.hot_badge?.bg_color || '#C8FF00',
+                              color:
+                                config.component_styles.event_card.hot_badge?.text_color || '#0F0F0F',
+                              borderTopLeftRadius: `${
+                                config.component_styles.event_card.hot_badge?.radius_top_left ?? 14
+                              }px`,
+                              borderTopRightRadius: `${
+                                config.component_styles.event_card.hot_badge?.radius_top_right ?? 0
+                              }px`,
+                              borderBottomLeftRadius: `${
+                                config.component_styles.event_card.hot_badge?.radius_bottom_left ?? 0
+                              }px`,
+                              borderBottomRightRadius: `${
+                                config.component_styles.event_card.hot_badge?.radius_bottom_right ?? 11
+                              }px`,
+                              ...(config.component_styles.event_card.hot_badge?.position === 'top_right'
+                                ? { top: 0, right: 0 }
+                                : config.component_styles.event_card.hot_badge?.position === 'top_left'
+                                ? { top: 0, left: 0 }
+                                : config.component_styles.event_card.hot_badge?.position === 'bottom_left'
+                                ? { bottom: 0, left: 0 }
+                                : { bottom: 0, right: 0 }),
+                            }}
+                          >
+                            {config.component_styles.event_card.hot_badge?.text || 'HOT'}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1161,7 +1584,7 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
                         )}
                       </h3>
                       <p className="text-xs text-zinc-400 mt-1">
-                        When enabled, Channel Cards use independent background, borders, radius, and badge colors.
+                        When enabled, uses a custom container background color. Corner radius, border width, and badge colors configured below are always applied.
                       </p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -2125,6 +2548,22 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
                     />
                   </label>
 
+                  <label className={`flex items-center justify-between p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 transition-all ${!config.channels_tab.show_favorite_tab ? 'opacity-40 pointer-events-none' : 'cursor-pointer'}`}>
+                    <div>
+                      <span className="text-xs font-bold text-white block">Auto-Hide &apos;Favorites&apos; When Empty</span>
+                      <span className="text-[11px] text-zinc-400">Hides the tab until the user bookmarks at least one channel</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={config.channels_tab.auto_hide_favorite_tab_when_empty ?? true}
+                      disabled={!config.channels_tab.show_favorite_tab}
+                      onChange={(e) =>
+                        updateDomain('channels_tab', (c) => ({ ...c, auto_hide_favorite_tab_when_empty: e.target.checked }))
+                      }
+                      className="w-5 h-5 accent-lime-400 rounded cursor-pointer"
+                    />
+                  </label>
+
                   <label className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 cursor-pointer">
                     <div>
                       <span className="text-xs font-bold text-white block">Show &apos;All Channels&apos; Tab</span>
@@ -2139,6 +2578,83 @@ export default function AppUiManager({ adminToken, onRefreshStats }: AppUiManage
                       className="w-5 h-5 accent-lime-400 rounded cursor-pointer"
                     />
                   </label>
+                </div>
+
+                {/* Live Tab Strip Simulation */}
+                <div className="pt-3 border-t border-zinc-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span className="font-semibold text-zinc-300">Live Tab Strip Simulation</span>
+                    <span className="text-[11px] text-zinc-500">
+                      {config.channels_tab.auto_hide_favorite_tab_when_empty
+                        ? 'Simulating User with 0 Bookmarks (Favorites hidden)'
+                        : 'Favorites tab permanently visible'}
+                    </span>
+                  </div>
+                  <div
+                    className="p-3 rounded-xl border border-zinc-800 flex items-center gap-4 overflow-x-auto"
+                    style={{ backgroundColor: config.theme.surface_color }}
+                  >
+                    {config.channels_tab.show_trending_tab && (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-lime-400 border-b-2 border-lime-400 pb-1 px-1">
+                        <span>Trending</span>
+                        {config.channels_tab.show_tab_counts && (
+                          <span className="text-[10px] bg-lime-400/20 text-lime-300 px-1.5 py-0.2 rounded-full font-mono">
+                            12
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {config.channels_tab.show_favorite_tab && (
+                      <div
+                        className={`flex items-center gap-1.5 text-xs font-medium transition-all pb-1 px-1 ${
+                          config.channels_tab.auto_hide_favorite_tab_when_empty
+                            ? 'text-zinc-600 line-through opacity-50'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        <Heart className="w-3.5 h-3.5" />
+                        <span>Favorite</span>
+                        {config.channels_tab.show_tab_counts && (
+                          <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.2 rounded-full font-mono">
+                            0
+                          </span>
+                        )}
+                        {config.channels_tab.auto_hide_favorite_tab_when_empty && (
+                          <span className="text-[9px] not-italic no-underline bg-amber-500/10 text-amber-400 border border-amber-500/30 px-1 rounded">
+                            Auto-Hidden
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-400 pb-1 px-1">
+                      {config.channels_tab.show_tab_icons && <Tv className="w-3.5 h-3.5" />}
+                      <span>Sports</span>
+                      {config.channels_tab.show_tab_counts && (
+                        <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.2 rounded-full font-mono">
+                          8
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-400 pb-1 px-1">
+                      {config.channels_tab.show_tab_icons && <Tv className="w-3.5 h-3.5" />}
+                      <span>News</span>
+                      {config.channels_tab.show_tab_counts && (
+                        <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.2 rounded-full font-mono">
+                          15
+                        </span>
+                      )}
+                    </div>
+                    {config.channels_tab.show_all_tab && (
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-400 pb-1 px-1">
+                        <span>All</span>
+                        {config.channels_tab.show_tab_counts && (
+                          <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.2 rounded-full font-mono">
+                            35
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

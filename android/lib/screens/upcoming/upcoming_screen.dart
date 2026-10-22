@@ -51,8 +51,8 @@ class _UpcomingScreenState extends ConsumerState<UpcomingScreen>
       _handleRefresh();
     });
 
-    // 45-second polling interval for real-time live events updates
-    _realtimeRefreshTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+    // 30-second polling interval matching backend real-time live events updates
+    _realtimeRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         _handleRefresh();
       }

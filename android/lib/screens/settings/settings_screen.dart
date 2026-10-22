@@ -618,8 +618,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final cardBorderColor = settingsStyle.useCustomOverride
         ? GoPlayTheme.parseHex(settingsStyle.cardBorderColor)
         : const Color(0x14FFFFFF);
-    final cardBorderWidth = settingsStyle.useCustomOverride ? settingsStyle.cardBorderWidth : 0.6;
-    final cardBorderRadius = settingsStyle.useCustomOverride ? settingsStyle.cardBorderRadius : 16.0;
+    final cardBorderWidth = settingsStyle.cardBorderWidth;
+    final cardBorderRadius = settingsStyle.cardBorderRadius;
+    final cardBorder = cardBorderWidth > 0
+        ? Border.all(
+            color: cardBorderColor,
+            width: cardBorderWidth,
+          )
+        : null;
     final effectiveIconBg = settingsStyle.useCustomOverride
         ? GoPlayTheme.parseHex(settingsStyle.iconContainerColor)
         : iconColor.withValues(alpha: 0.12);
@@ -631,10 +637,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(cardBorderRadius),
-        border: Border.all(
-          color: cardBorderColor,
-          width: cardBorderWidth,
-        ),
+        border: cardBorder,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(cardBorderRadius),

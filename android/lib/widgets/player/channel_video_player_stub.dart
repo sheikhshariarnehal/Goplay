@@ -218,13 +218,18 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
     ),
   );
 
+  String? _cachedStreamUrl;
+
   // ─── Creation params ─────────────────────────────────────────────
 
   Map<String, dynamic> _getCreationParams() {
-    if (_cachedParams != null && _cachedChannelId == widget.channel.id) {
+    if (_cachedParams != null &&
+        _cachedChannelId == widget.channel.id &&
+        _cachedStreamUrl == widget.channel.streamUrl) {
       return _cachedParams!;
     }
     _cachedChannelId = widget.channel.id;
+    _cachedStreamUrl = widget.channel.streamUrl;
     _cachedParams = _buildCreationParams();
     return _cachedParams!;
   }
@@ -238,7 +243,9 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
     // already propagates custom headers to all sub-requests (manifests,
     // segments, keys) natively.  Routing segments through the Dart heap
     // caused severe GC stalls (CollectNewGeneration up to 9.5 s).
-    final playUrl = widget.channel.streamUrl;
+    final rawUrl = widget.channel.streamUrl.trim();
+    final isPendingDynamic = rawUrl.isEmpty || rawUrl.startsWith('pro/') || rawUrl.contains('.txt');
+    final playUrl = isPendingDynamic ? '' : rawUrl;
 
     final params = <String, dynamic>{
       'url': playUrl,

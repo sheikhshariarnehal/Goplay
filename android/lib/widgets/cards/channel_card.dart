@@ -102,16 +102,18 @@ class ChannelCard extends ConsumerWidget {
     );
 
     final cardBg = GoPlayTheme.parseHex(uiConfig.resolveChannelCardBg());
-    final cardRadius = channelCardStyle.useCustomOverride ? channelCardStyle.borderRadius : 10.0;
-    final cardBorder = channelCardStyle.useCustomOverride && channelCardStyle.borderWidth > 0
+    final cardRadius = channelCardStyle.borderRadius;
+    final cardBorder = channelCardStyle.borderWidth > 0
         ? Border.all(
-            color: GoPlayTheme.parseHex(channelCardStyle.borderColor),
+            color: channelCardStyle.useCustomOverride
+                ? GoPlayTheme.parseHex(channelCardStyle.borderColor)
+                : (isDark ? GoPlayTheme.darkCardBorder : GoPlayTheme.lightCardBorder),
             width: channelCardStyle.borderWidth,
           )
         : null;
 
     return TvFocusable(
-      borderRadius: BorderRadius.circular(cardRadius > 2 ? cardRadius - 2 : cardRadius),
+      borderRadius: BorderRadius.circular(cardRadius),
       onTap: () => _open(context),
       onLongPress: () => _toggleFavorite(ref),
       // Restores accessibility: the grid used to be wrapped in

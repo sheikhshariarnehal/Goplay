@@ -111,6 +111,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
       (previous, next) => _applyCategories(ref.read(activeCategoriesWithCountsProvider).value),
     );
 
+    ref.listenManual<Set<String>>(
+      favoriteChannelIdsProvider,
+      (previous, next) {
+        final prevEmpty = (previous ?? const <String>{}).isEmpty;
+        final nextEmpty = next.isEmpty;
+        if (prevEmpty != nextEmpty) {
+          _applyCategories(ref.read(activeCategoriesWithCountsProvider).value);
+        }
+      },
+    );
+
     _initialised = true;
   }
 
@@ -139,7 +150,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
 
     final ids = <String>[
       if (tabConfig.showTrendingTab) 'trending',
-      if (tabConfig.showFavoriteTab) 'favorite',
+      if (tabConfig.showFavoriteTab &&
+          (!tabConfig.autoHideFavoriteTabWhenEmpty ||
+              ref.read(favoriteChannelIdsProvider).isNotEmpty))
+        'favorite',
       ...?categories?.map((e) => e.$1.id),
       if (tabConfig.showAllTab) 'all',
     ];
@@ -812,7 +826,6 @@ class _CategoryFilterBar extends ConsumerWidget {
   final ValueChanged<int> onTabTapped;
 
   const _CategoryFilterBar({
-    super.key,
     required this.tabController,
     required this.activeCatsWithCounts,
     required this.trendingCount,
@@ -845,7 +858,9 @@ class _CategoryFilterBar extends ConsumerWidget {
             ],
           ),
         ),
-      if (tabConfig.showFavoriteTab)
+      if (tabConfig.showFavoriteTab &&
+          (!tabConfig.autoHideFavoriteTabWhenEmpty ||
+              ref.watch(favoriteChannelIdsProvider).isNotEmpty))
         Tab(
           child: Row(
             mainAxisSize: MainAxisSize.min,

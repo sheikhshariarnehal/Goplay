@@ -20,7 +20,7 @@ import 'providers/app_providers.dart';
 // Completes when all heavy init is done.
 late final Future<void> appInitFuture;
 
-void main() {
+void main() async {
   // Ensure binding is ready synchronously — very fast, no I/O.
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -49,8 +49,16 @@ void main() {
     debugPrint('Failed to set SystemUIOverlayStyle: $e');
   }
 
-  // Kick off all heavy async init WITHOUT awaiting it here.
-  // runApp() fires immediately so the first Flutter frame draws in < 50ms.
+  // Fast init: Initialize Hive and open settingsBox BEFORE runApp.
+  // This guarantees dynamic theme colors & UI config load instantly from disk on cold start.
+  try {
+    await Hive.initFlutter();
+    await _openSafeBox(AppConstants.settingsBox);
+  } catch (e) {
+    debugPrint('Fast Hive settings init error: $e');
+  }
+
+  // Kick off remaining heavy async init (channels, categories, Supabase) concurrently
   appInitFuture = _initializeApp();
 
   runApp(const ProviderScope(child: GoPlayApp()));
@@ -71,14 +79,7 @@ Future<void> _initializeApp() async {
 }
 
 Future<void> _initHive() async {
-  try {
-    await Hive.initFlutter();
-  } catch (e) {
-    debugPrint('Hive.initFlutter error: $e');
-  }
-
   final boxesToOpen = [
-    AppConstants.settingsBox,
     AppConstants.channelsBox,
     AppConstants.eventsBox,
     AppConstants.categoriesBox,

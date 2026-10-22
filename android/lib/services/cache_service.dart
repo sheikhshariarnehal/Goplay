@@ -1,5 +1,6 @@
 // `show` is required: flutter/foundation also exports a `Category` annotation
 // class, which would otherwise clash with our Category model.
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:hive_flutter/hive_flutter.dart';
 import '../core/constants.dart';
@@ -251,18 +252,49 @@ class CacheService {
   }
 
   // ─── App UI Configuration ────────────────────────────────────
+  bool hasLocalUiConfig() {
+    final box = _boxOrNull(AppConstants.settingsBox);
+    if (box == null) return false;
+    final jsonStr = box.get('ui_config_json');
+    if (jsonStr is String && jsonStr.isNotEmpty) return true;
+    final raw = box.get('ui_config');
+    return raw != null;
+  }
+
   AppUiConfig getLocalUiConfig() {
     if (_uiConfigMemo != null) return _uiConfigMemo!;
     final box = _boxOrNull(AppConstants.settingsBox);
-    final raw = box?.get('ui_config');
-    if (raw is Map) {
+    if (box == null) {
+      // Box is not open yet (e.g. during very early first frame).
+      // Return defaults for this frame but do NOT memoize it,
+      // so subsequent calls once the box opens load the real saved user theme!
+      return AppUiConfig.defaults();
+    }
+
+    // 1. Try reading clean JSON string
+    final jsonStr = box.get('ui_config_json');
+    if (jsonStr is String && jsonStr.isNotEmpty) {
       try {
-        _uiConfigMemo = AppUiConfig.fromJson(Map<String, dynamic>.from(raw));
+        final decoded = jsonDecode(jsonStr);
+        _uiConfigMemo = AppUiConfig.fromJson(decoded);
         return _uiConfigMemo!;
       } catch (e) {
-        debugPrint('CacheService: failed to decode cached ui_config: $e');
+        debugPrint('CacheService: failed to decode ui_config_json: $e');
       }
     }
+
+    // 2. Fallback to raw map
+    final raw = box.get('ui_config');
+    if (raw != null) {
+      try {
+        _uiConfigMemo = AppUiConfig.fromJson(raw);
+        return _uiConfigMemo!;
+      } catch (e) {
+        debugPrint('CacheService: failed to decode raw cached ui_config: $e');
+      }
+    }
+
+    // Only memoize defaults when the box is open and has no saved config
     return _uiConfigMemo = AppUiConfig.defaults();
   }
 
@@ -270,6 +302,12 @@ class CacheService {
     _uiConfigMemo = config;
     final box = _boxOrNull(AppConstants.settingsBox);
     if (box == null) return;
+    try {
+      final jsonStr = jsonEncode(config.toJson());
+      await box.put('ui_config_json', jsonStr);
+    } catch (e) {
+      debugPrint('CacheService: failed to jsonEncode ui_config: $e');
+    }
     await box.put('ui_config', config.toJson());
   }
 

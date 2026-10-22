@@ -153,14 +153,18 @@ class _PlayZEventCardState extends ConsumerState<PlayZEventCard>
     final onSurfaceVariant = theme.colorScheme.onSurfaceVariant; // #AAAAAA in dark mode
     final onSurfaceMuted = isDark ? GoPlayTheme.darkOnSurfaceMuted : GoPlayTheme.lightOnSurfaceMuted;
 
-    // Border & radius styling
-    final cardRadius = eventCardStyle.useCustomOverride ? eventCardStyle.borderRadius : 12.0;
+    // Border & radius styling - always applies the configured component radius and border width
+    final cardRadius = eventCardStyle.borderRadius;
     final borderColor = eventCardStyle.useCustomOverride
         ? GoPlayTheme.parseHex(eventCardStyle.borderColor)
         : (isLive ? GoPlayTheme.primary : (isDark ? const Color(0x28FFFFFF) : GoPlayTheme.lightCardBorder));
-    final borderWidth = eventCardStyle.useCustomOverride
-        ? eventCardStyle.borderWidth
-        : (isLive ? 1.0 : 0.8);
+    final borderWidth = eventCardStyle.borderWidth;
+    final cardBorder = borderWidth > 0
+        ? Border.all(
+            color: borderColor,
+            width: borderWidth,
+          )
+        : null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4.0), // matches _kTileGap
@@ -174,14 +178,14 @@ class _PlayZEventCardState extends ConsumerState<PlayZEventCard>
               decoration: BoxDecoration(
                 color: cardBg,
                 borderRadius: BorderRadius.circular(cardRadius),
-                border: Border.all(
-                  color: borderColor,
-                  width: borderWidth,
-                ),
-                boxShadow: isLive
+                border: cardBorder,
+                boxShadow: (isLive && eventCardStyle.enableGlow)
                     ? [
                         BoxShadow(
-                          color: GoPlayTheme.primary.withValues(alpha: 0.20),
+                          color: (eventCardStyle.useCustomOverride
+                                  ? GoPlayTheme.parseHex(eventCardStyle.borderColor)
+                                  : GoPlayTheme.primary)
+                              .withValues(alpha: 0.20),
                           blurRadius: 8,
                           spreadRadius: 0.5,
                         ),
@@ -195,7 +199,7 @@ class _PlayZEventCardState extends ConsumerState<PlayZEventCard>
                       ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(cardRadius > 1 ? cardRadius - 1 : cardRadius),
+                borderRadius: BorderRadius.circular(cardRadius),
                 child: Stack(
                   children: [
                     // Main Card Content
@@ -459,34 +463,47 @@ class _PlayZEventCardState extends ConsumerState<PlayZEventCard>
                       ),
                     ),
 
-                    // --- HOT BADGE (Bottom-Right Corner) ---
-                    if (event.isFeatured)
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 9.0,
-                            vertical: 1.5,
-                          ),
-                          decoration: const BoxDecoration(
-                            color: GoPlayTheme.primary, // #C8FF00
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(14.0),
-                              bottomRight: Radius.circular(11.0),
+                    // --- FEATURED / HOT BADGE ---
+                    if (event.isFeatured && eventCardStyle.hotBadge.enabled)
+                      Builder(
+                        builder: (context) {
+                          final pos = eventCardStyle.hotBadge.position;
+                          final isTop = pos == 'top_right' || pos == 'top_left';
+                          final isLeft = pos == 'top_left' || pos == 'bottom_left';
+                          return Positioned(
+                            top: isTop ? 0 : null,
+                            bottom: isTop ? null : 0,
+                            left: isLeft ? 0 : null,
+                            right: isLeft ? null : 0,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9.0,
+                                vertical: 1.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: GoPlayTheme.parseHex(eventCardStyle.hotBadge.bgColor),
+                                borderRadius: BorderRadius.only(
+                                  topLeft: Radius.circular(eventCardStyle.hotBadge.radiusTopLeft),
+                                  topRight: Radius.circular(eventCardStyle.hotBadge.radiusTopRight),
+                                  bottomLeft: Radius.circular(eventCardStyle.hotBadge.radiusBottomLeft),
+                                  bottomRight: Radius.circular(eventCardStyle.hotBadge.radiusBottomRight),
+                                ),
+                              ),
+                              child: Text(
+                                eventCardStyle.hotBadge.text.isNotEmpty
+                                    ? eventCardStyle.hotBadge.text
+                                    : 'HOT',
+                                style: TextStyle(
+                                  fontFamily: GoPlayType.family,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: GoPlayTheme.parseHex(eventCardStyle.hotBadge.textColor),
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
                             ),
-                          ),
-                          child: const Text(
-                            'HOT',
-                            style: TextStyle(
-                              fontFamily: GoPlayType.family,
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F0F0F),
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                   ],
                 ),

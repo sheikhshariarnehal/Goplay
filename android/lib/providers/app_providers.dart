@@ -281,9 +281,10 @@ final filteredLiveEventsProvider =
     Provider.family<AsyncValue<List<SportEvent>>, String>((ref, sport) {
   final liveAsync = ref.watch(liveEventsProvider);
   return liveAsync.whenData((allEvents) {
-    if (sport.toLowerCase() == 'all') return allEvents;
+    final target = sport.trim().toLowerCase();
+    if (target == 'all') return allEvents;
     return allEvents
-        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .where((e) => e.sport.trim().toLowerCase() == target)
         .toList();
   });
 });
@@ -292,9 +293,10 @@ final filteredTodayEventsProvider =
     Provider.family<AsyncValue<List<SportEvent>>, String>((ref, sport) {
   final todayState = ref.watch(todayEventsProvider);
   return todayState.whenData((allEvents) {
-    if (sport.toLowerCase() == 'all') return allEvents;
+    final target = sport.trim().toLowerCase();
+    if (target == 'all') return allEvents;
     return allEvents
-        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .where((e) => e.sport.trim().toLowerCase() == target)
         .toList();
   });
 });
@@ -304,9 +306,10 @@ final filteredTomorrowEventsProvider =
   final sport = ref.watch(selectedSportFilterProvider);
   final tomorrowState = ref.watch(tomorrowEventsProvider);
   return tomorrowState.whenData((allEvents) {
-    if (sport.toLowerCase() == 'all') return allEvents;
+    final target = sport.trim().toLowerCase();
+    if (target == 'all') return allEvents;
     return allEvents
-        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .where((e) => e.sport.trim().toLowerCase() == target)
         .toList();
   });
 });
@@ -316,9 +319,10 @@ final filteredUpcomingEventsProvider =
   final sport = ref.watch(selectedSportFilterProvider);
   final upcomingAsync = ref.watch(upcomingEventsProvider);
   return upcomingAsync.whenData((allEvents) {
-    if (sport.toLowerCase() == 'all') return allEvents;
+    final target = sport.trim().toLowerCase();
+    if (target == 'all') return allEvents;
     return allEvents
-        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .where((e) => e.sport.trim().toLowerCase() == target)
         .toList();
   });
 });
@@ -328,9 +332,10 @@ final filteredEndedEventsProvider =
   final sport = ref.watch(selectedSportFilterProvider);
   final endedState = ref.watch(endedEventsProvider);
   return endedState.whenData((allEvents) {
-    if (sport.toLowerCase() == 'all') return allEvents;
+    final target = sport.trim().toLowerCase();
+    if (target == 'all') return allEvents;
     return allEvents
-        .where((e) => e.sport.toLowerCase() == sport.toLowerCase())
+        .where((e) => e.sport.trim().toLowerCase() == target)
         .toList();
   });
 });

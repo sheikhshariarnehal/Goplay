@@ -69,20 +69,21 @@ class SportEvent {
 
   /// Evaluates whether the event has concluded according to UTC/GMT time.
   bool get isEnded {
-    final s = status.toLowerCase();
+    final s = status.trim().toLowerCase();
     if (s == 'finished' || s == 'completed' || s == 'ended') {
       return true;
     }
     if (endTime != null) {
       return DateTime.now().toUtc().isAfter(endTime!.toUtc());
     }
-    return false;
+    // Fallback: If no endTime provided, sport events expire 4 hours after kickoff
+    return DateTime.now().toUtc().difference(startTime.toUtc()) > const Duration(hours: 4);
   }
 
   /// Evaluates whether the event is currently active and live in UTC/GMT.
   bool get isLive {
     if (isEnded) return false;
-    final s = status.toLowerCase();
+    final s = status.trim().toLowerCase();
     if (s == 'live') return true;
 
     final nowUtc = DateTime.now().toUtc();
@@ -117,8 +118,8 @@ class SportEvent {
     return EventLifecycleStatus.upcoming;
   }
 
-  Duration get timeUntilStart => startTime.difference(DateTime.now());
-  Duration get elapsedTime => DateTime.now().difference(startTime);
+  Duration get timeUntilStart => startTime.toUtc().difference(DateTime.now().toUtc());
+  Duration get elapsedTime => DateTime.now().toUtc().difference(startTime.toUtc());
 
   static DateTime? _parseDateSafe(dynamic val) {
     if (val == null) return null;
@@ -169,25 +170,29 @@ class SportEvent {
       } catch (_) {}
     }
 
+    final rawSport = json['sport'] as String? ?? json['category'] as String? ?? 'Sports';
+    final rawLeague = json['league'] as String? ?? json['eventName'] as String? ?? '';
+    final rawStatus = json['status'] as String? ?? 'upcoming';
+
     return SportEvent(
       id: (json['id'] ?? (json['links'] != null ? (json['links'] as String).replaceAll('/', '_') : null) ?? UniqueKey().toString()).toString().replaceAll('/', '_'),
-      sport: json['sport'] as String? ?? json['category'] as String? ?? 'Sports',
-      league: json['league'] as String? ?? json['eventName'] as String? ?? '',
+      sport: rawSport.trim().isEmpty ? 'Sports' : rawSport.trim(),
+      league: rawLeague.trim(),
       homeTeam: json['home_team'] is Map
           ? Team.fromJson(Map<String, dynamic>.from(json['home_team'] as Map))
           : Team(
-              name: json['teamAName'] as String? ?? 'Team A',
+              name: (json['teamAName'] as String? ?? 'Team A').trim(),
               flag: json['teamAFlag'] as String?,
             ),
       awayTeam: json['away_team'] is Map
           ? Team.fromJson(Map<String, dynamic>.from(json['away_team'] as Map))
           : Team(
-              name: json['teamBName'] as String? ?? 'Team B',
+              name: (json['teamBName'] as String? ?? 'Team B').trim(),
               flag: json['teamBFlag'] as String?,
             ),
       startTime: start,
       endTime: end,
-      status: json['status'] as String? ?? 'upcoming',
+      status: rawStatus.trim(),
       channels: json['channels'] is List
           ? (json['channels'] as List).map((e) => e.toString()).toList()
           : [],

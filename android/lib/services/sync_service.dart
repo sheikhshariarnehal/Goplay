@@ -108,11 +108,11 @@ class SyncService {
         final localUiVer = cache.getLocalUiConfigVersion();
         final rawRemoteUiConfig = remoteVersions['ui_config'];
 
-        if (localUiVer == null || remoteUiVer > localUiVer || localUiVer == 0) {
+        if (localUiVer == null || remoteUiVer != localUiVer || localUiVer == 0 || !cache.hasLocalUiConfig()) {
           debugPrint('SyncService: UI Config version changed ($localUiVer -> $remoteUiVer). Updating local cache...');
           AppUiConfig? newConfig;
           if (rawRemoteUiConfig is Map) {
-            newConfig = AppUiConfig.fromJson(Map<String, dynamic>.from(rawRemoteUiConfig));
+            newConfig = AppUiConfig.fromJson(rawRemoteUiConfig);
           } else {
             newConfig = await supabase.getUiConfig();
           }

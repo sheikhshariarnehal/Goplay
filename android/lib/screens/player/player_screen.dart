@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../core/typography.dart';
 import '../../providers/app_providers.dart';
 import '../../models/channel.dart';
+import '../../models/event.dart';
 import '../../widgets/player/channel_video_player.dart';
 import '../../widgets/tv_focus_wrapper.dart';
 import '../../services/stream_decryptor.dart';
@@ -149,6 +150,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   /// the whole category on the first channel switch.
   final List<String>? eventChannels;
   final List<Channel>? dynamicChannels;
+  final SportEvent? sportEvent;
 
   final bool forceFullscreen;
 
@@ -157,6 +159,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     required this.channelId,
     this.eventChannels,
     this.dynamicChannels,
+    this.sportEvent,
     this.forceFullscreen = false,
   });
 
@@ -186,6 +189,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   bool _channelPanelHasFocus = false;
   List<Channel> _resolvedDynamicChannels = [];
   bool _isResolvingStream = false;
+  bool _resolutionFailed = false;
 
   Future<void> _selectChannel(String id, List<Channel> allChannels) async {
     final candidate = allChannels.cast<Channel?>().firstWhere(
@@ -209,6 +213,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             _currentChannelId = candidate.id;
             _currentChannelServers = streams;
             _activeServerIndex = 0;
+            _resolutionFailed = false;
           });
           _startControlsTimer();
           return;
@@ -229,6 +234,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         if (streams.isNotEmpty && mounted) {
           setState(() {
             _isResolvingStream = false;
+            _resolutionFailed = false;
             _resolvedDynamicChannels = [
               ..._resolvedDynamicChannels.where((c) => !c.id.startsWith('${candidate.id}_')),
               ...streams,
@@ -241,15 +247,66 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           return;
         }
       } catch (_) {}
-      if (mounted) setState(() => _isResolvingStream = false);
+      if (mounted) {
+        setState(() {
+          _isResolvingStream = false;
+          _resolutionFailed = true;
+        });
+      }
     }
     if (mounted) {
       setState(() {
         _currentChannelId = id;
         _currentChannelServers = [];
         _activeServerIndex = 0;
+        _resolutionFailed = false;
       });
       _startControlsTimer();
+    }
+  }
+
+  Future<void> _resolveSportEvent(SportEvent event) async {
+    final linksPath = event.links;
+    if (linksPath == null || linksPath.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _isResolvingStream = false;
+          _resolutionFailed = true;
+        });
+      }
+      return;
+    }
+
+    try {
+      final streams = await StreamDecryptor.fetchAndDecryptStreams(
+        linksPath: linksPath,
+        eventId: event.id,
+        eventTitle: '${event.homeTeam.name} vs ${event.awayTeam.name}',
+        logo: event.banner,
+      );
+
+      if (streams.isNotEmpty && mounted) {
+        setState(() {
+          _isResolvingStream = false;
+          _resolutionFailed = false;
+          _resolvedDynamicChannels = [
+            ..._resolvedDynamicChannels.where((c) => !c.id.startsWith('live_${event.id.replaceAll('/', '_')}')),
+            ...streams,
+          ];
+          _currentChannelId = streams.first.id;
+          _currentChannelServers = streams;
+          _activeServerIndex = 0;
+        });
+        _startControlsTimer();
+        return;
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _isResolvingStream = false;
+        _resolutionFailed = true;
+      });
     }
   }
 
@@ -260,6 +317,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (widget.dynamicChannels != null && widget.dynamicChannels!.isNotEmpty) {
       _currentChannelServers = List<Channel>.from(widget.dynamicChannels!);
       _activeServerIndex = 0;
+    } else if (widget.sportEvent != null) {
+      _isResolvingStream = true;
+      _resolveSportEvent(widget.sportEvent!);
     }
     _startControlsTimer();
 
@@ -497,31 +557,67 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             decoration: BoxDecoration(color: cs.surface),
           child: channelsAsync.when(
             data: (channels) {
+              final eventPlaceholder = widget.sportEvent != null &&
+                      !_resolvedDynamicChannels.any((c) => c.id == _currentChannelId)
+                  ? Channel(
+                      id: _currentChannelId,
+                      name: '${widget.sportEvent!.homeTeam.name} vs ${widget.sportEvent!.awayTeam.name}',
+                      category: widget.sportEvent!.sport.isNotEmpty ? widget.sportEvent!.sport : 'Live Sports',
+                      streamUrl: '',
+                      logo: widget.sportEvent!.banner,
+                      headers: const {},
+                    )
+                  : null;
+
               final allChannels = [
                 ...channels,
                 if (widget.dynamicChannels != null) ...widget.dynamicChannels!,
                 ..._resolvedDynamicChannels,
+                ?eventPlaceholder,
               ];
 
-              if (_isResolvingStream) {
-                return const Center(
-                  child: CircularProgressIndicator(
-                    color: GoPlayTheme.primary,
-                    strokeWidth: 2,
-                  ),
-                );
-              }
 
               final channel = allChannels.cast<Channel?>().firstWhere(
                 (c) => c?.id == _currentChannelId,
                 orElse: () => null,
               );
 
-              if (channel == null) {
+              if (channel == null ||
+                  (_resolutionFailed &&
+                      channel.streamUrl.isEmpty &&
+                      _currentChannelServers.isEmpty)) {
                 return Center(
-                  child: Text(
-                    'Channel not found',
-                    style: GoPlayType.body.copyWith(color: GoPlayTheme.darkOnSurface),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.live_tv_rounded, size: 48, color: GoPlayTheme.onSurfaceVariant),
+                      const SizedBox(height: 12),
+                      Text(
+                        widget.sportEvent != null
+                            ? 'Live feed is not currently active.\nKickoff might not have started yet.'
+                            : 'Channel not found',
+                        textAlign: TextAlign.center,
+                        style: GoPlayType.body.copyWith(color: GoPlayTheme.darkOnSurface),
+                      ),
+                      if (widget.sportEvent != null) ...[
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: GoPlayTheme.primary,
+                            foregroundColor: Colors.black,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _resolutionFailed = false;
+                              _isResolvingStream = true;
+                            });
+                            _resolveSportEvent(widget.sportEvent!);
+                          },
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('Retry Connection'),
+                        ),
+                      ],
+                    ],
                   ),
                 );
               }
@@ -541,18 +637,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 }
               }
 
-              // Auto-resolve encrypted stream if opened directly
-              if ((channel.streamUrl.startsWith('pro/') || channel.streamUrl.contains('.txt')) && _currentChannelServers.isEmpty) {
+              // Auto-resolve encrypted stream in the background without blocking pure native player mount
+              if ((channel.streamUrl.startsWith('pro/') || channel.streamUrl.contains('.txt')) &&
+                  _currentChannelServers.isEmpty &&
+                  !_isResolvingStream) {
+                _isResolvingStream = true;
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) _selectChannel(channel.id, allChannels);
                 });
-                return const Center(
-                  child: CircularProgressIndicator(
-                    color: GoPlayTheme.primary,
-                    strokeWidth: 2,
-                  ),
-                );
               }
+
 
               final currentPlayChannel = (_currentChannelServers.isNotEmpty &&
                       _activeServerIndex < _currentChannelServers.length)

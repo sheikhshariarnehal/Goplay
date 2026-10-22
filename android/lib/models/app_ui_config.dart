@@ -1,5 +1,23 @@
 import 'package:flutter/foundation.dart';
 
+/// Recursively normalizes any Map / dynamic data into strongly-typed `Map<String, dynamic>`.
+/// Completely eliminates Hive binary `_Map<dynamic, dynamic>` TypeError crashes on cold starts.
+dynamic _deepCastValue(dynamic value) {
+  if (value is Map) {
+    return _deepCastMap(value);
+  }
+  if (value is List) {
+    return value.map(_deepCastValue).toList();
+  }
+  return value;
+}
+
+Map<String, dynamic>? _deepCastMap(dynamic map) {
+  if (map == null) return null;
+  if (map is! Map) return null;
+  return map.map((key, value) => MapEntry(key.toString(), _deepCastValue(value)));
+}
+
 /// Root model for dynamic App UI Configuration.
 @immutable
 class AppUiConfig {
@@ -55,25 +73,27 @@ class AppUiConfig {
         componentStyles: ComponentStylesConfig.defaults(),
       );
 
-  factory AppUiConfig.fromJson(Map<String, dynamic>? json) {
+  factory AppUiConfig.fromJson(dynamic raw) {
+    if (raw == null) return AppUiConfig.defaults();
+    final json = _deepCastMap(raw);
     if (json == null) return AppUiConfig.defaults();
     try {
       return AppUiConfig(
-        theme: ThemeConfig.fromJson(json['theme'] as Map<String, dynamic>?),
-        channelsTab: ChannelsTabConfig.fromJson(json['channels_tab'] as Map<String, dynamic>?),
-        categoriesScreen: CategoriesScreenConfig.fromJson(json['categories_screen'] as Map<String, dynamic>?),
-        homeScreen: HomeScreenConfig.fromJson(json['home_screen'] as Map<String, dynamic>?),
-        promoBanner: PromoBannerConfig.fromJson(json['promo_banner'] as Map<String, dynamic>?),
-        tvExperience: TvExperienceConfig.fromJson(json['tv_experience'] as Map<String, dynamic>?),
-        navigationBranding: NavigationBrandingConfig.fromJson(json['navigation_branding'] as Map<String, dynamic>?),
-        searchConfig: SearchConfig.fromJson(json['search_config'] as Map<String, dynamic>?),
-        sportsCards: SportsCardsConfig.fromJson(json['sports_cards'] as Map<String, dynamic>?),
-        playerDefaults: PlayerDefaultsConfig.fromJson(json['player_defaults'] as Map<String, dynamic>?),
-        streamReporting: StreamReportingConfig.fromJson(json['stream_reporting'] as Map<String, dynamic>?),
-        communityLinks: CommunityLinksConfig.fromJson(json['community_links'] as Map<String, dynamic>?),
-        otaUpdates: OtaUpdatesConfig.fromJson(json['ota_updates'] as Map<String, dynamic>?),
-        broadcasts: BroadcastsConfig.fromJson(json['broadcasts'] as Map<String, dynamic>?),
-        componentStyles: ComponentStylesConfig.fromJson(json['component_styles'] as Map<String, dynamic>?),
+        theme: ThemeConfig.fromJson(_deepCastMap(json['theme'])),
+        channelsTab: ChannelsTabConfig.fromJson(_deepCastMap(json['channels_tab'])),
+        categoriesScreen: CategoriesScreenConfig.fromJson(_deepCastMap(json['categories_screen'])),
+        homeScreen: HomeScreenConfig.fromJson(_deepCastMap(json['home_screen'])),
+        promoBanner: PromoBannerConfig.fromJson(_deepCastMap(json['promo_banner'])),
+        tvExperience: TvExperienceConfig.fromJson(_deepCastMap(json['tv_experience'])),
+        navigationBranding: NavigationBrandingConfig.fromJson(_deepCastMap(json['navigation_branding'])),
+        searchConfig: SearchConfig.fromJson(_deepCastMap(json['search_config'])),
+        sportsCards: SportsCardsConfig.fromJson(_deepCastMap(json['sports_cards'])),
+        playerDefaults: PlayerDefaultsConfig.fromJson(_deepCastMap(json['player_defaults'])),
+        streamReporting: StreamReportingConfig.fromJson(_deepCastMap(json['stream_reporting'])),
+        communityLinks: CommunityLinksConfig.fromJson(_deepCastMap(json['community_links'])),
+        otaUpdates: OtaUpdatesConfig.fromJson(_deepCastMap(json['ota_updates'])),
+        broadcasts: BroadcastsConfig.fromJson(_deepCastMap(json['broadcasts'])),
+        componentStyles: ComponentStylesConfig.fromJson(_deepCastMap(json['component_styles'])),
       );
     } catch (e, stack) {
       debugPrint('AppUiConfig.fromJson error, falling back to defaults: $e\n$stack');
@@ -168,13 +188,10 @@ class AppUiConfig {
   /// Resolves Category Chip border radius:
   double resolveCategoryChipRadius({bool isHome = false}) {
     final chips = componentStyles.categoryChips;
-    if (chips.useCustomOverride) {
-      if (chips.separateHomeAndUpcoming) {
-        return isHome ? chips.homeOverride.borderRadius : chips.upcomingOverride.borderRadius;
-      }
-      return chips.borderRadius;
+    if (chips.separateHomeAndUpcoming) {
+      return isHome ? chips.homeOverride.borderRadius : chips.upcomingOverride.borderRadius;
     }
-    return isHome ? 8.0 : 20.0;
+    return chips.borderRadius;
   }
 
   /// Resolves Settings Card background:
@@ -232,6 +249,7 @@ class ChannelsTabConfig {
   final bool showTabCounts;
   final bool showTrendingTab;
   final bool showFavoriteTab;
+  final bool autoHideFavoriteTabWhenEmpty;
   final bool showAllTab;
   final int channelGridColumns;
   final String cardLayoutMode; // 'compact', 'landscape', 'list'
@@ -245,6 +263,7 @@ class ChannelsTabConfig {
     required this.showTabCounts,
     required this.showTrendingTab,
     required this.showFavoriteTab,
+    this.autoHideFavoriteTabWhenEmpty = true,
     required this.showAllTab,
     required this.channelGridColumns,
     required this.cardLayoutMode,
@@ -259,6 +278,7 @@ class ChannelsTabConfig {
         showTabCounts = true,
         showTrendingTab = true,
         showFavoriteTab = true,
+        autoHideFavoriteTabWhenEmpty = true,
         showAllTab = true,
         channelGridColumns = 3,
         cardLayoutMode = 'compact',
@@ -274,6 +294,7 @@ class ChannelsTabConfig {
       showTabCounts: json['show_tab_counts'] as bool? ?? true,
       showTrendingTab: json['show_trending_tab'] as bool? ?? true,
       showFavoriteTab: json['show_favorite_tab'] as bool? ?? true,
+      autoHideFavoriteTabWhenEmpty: json['auto_hide_favorite_tab_when_empty'] as bool? ?? true,
       showAllTab: json['show_all_tab'] as bool? ?? true,
       channelGridColumns: (json['channel_grid_columns'] as num?)?.toInt() ?? 3,
       cardLayoutMode: json['card_layout_mode'] as String? ?? 'compact',
@@ -289,6 +310,7 @@ class ChannelsTabConfig {
         'show_tab_counts': showTabCounts,
         'show_trending_tab': showTrendingTab,
         'show_favorite_tab': showFavoriteTab,
+        'auto_hide_favorite_tab_when_empty': autoHideFavoriteTabWhenEmpty,
         'show_all_tab': showAllTab,
         'channel_grid_columns': channelGridColumns,
         'card_layout_mode': cardLayoutMode,
@@ -858,13 +880,14 @@ class ComponentStylesConfig {
         categoryChips = const CategoryChipsStyleConfig.defaults(),
         settingsScreen = const SettingsScreenStyleConfig.defaults();
 
-  factory ComponentStylesConfig.fromJson(Map<String, dynamic>? json) {
+  factory ComponentStylesConfig.fromJson(dynamic raw) {
+    final json = _deepCastMap(raw);
     if (json == null) return const ComponentStylesConfig.defaults();
     return ComponentStylesConfig(
-      eventCard: EventCardStyleConfig.fromJson(json['event_card'] as Map<String, dynamic>?),
-      channelCard: ChannelCardStyleConfig.fromJson(json['channel_card'] as Map<String, dynamic>?),
-      categoryChips: CategoryChipsStyleConfig.fromJson(json['category_chips'] as Map<String, dynamic>?),
-      settingsScreen: SettingsScreenStyleConfig.fromJson(json['settings_screen'] as Map<String, dynamic>?),
+      eventCard: EventCardStyleConfig.fromJson(_deepCastMap(json['event_card'])),
+      channelCard: ChannelCardStyleConfig.fromJson(_deepCastMap(json['channel_card'])),
+      categoryChips: CategoryChipsStyleConfig.fromJson(_deepCastMap(json['category_chips'])),
+      settingsScreen: SettingsScreenStyleConfig.fromJson(_deepCastMap(json['settings_screen'])),
     );
   }
 
@@ -877,6 +900,74 @@ class ComponentStylesConfig {
 }
 
 @immutable
+class HotBadgeConfig {
+  final bool enabled;
+  final String text;
+  final String bgColor;
+  final String textColor;
+  final double radiusTopLeft;
+  final double radiusTopRight;
+  final double radiusBottomLeft;
+  final double radiusBottomRight;
+  final bool isRadiusLinked;
+  final String position; // 'bottom_right', 'top_right', 'top_left', 'bottom_left'
+
+  const HotBadgeConfig({
+    required this.enabled,
+    required this.text,
+    required this.bgColor,
+    required this.textColor,
+    required this.radiusTopLeft,
+    required this.radiusTopRight,
+    required this.radiusBottomLeft,
+    required this.radiusBottomRight,
+    required this.isRadiusLinked,
+    required this.position,
+  });
+
+  const HotBadgeConfig.defaults()
+      : enabled = true,
+        text = 'HOT',
+        bgColor = '#C8FF00',
+        textColor = '#0F0F0F',
+        radiusTopLeft = 14.0,
+        radiusTopRight = 0.0,
+        radiusBottomLeft = 0.0,
+        radiusBottomRight = 11.0,
+        isRadiusLinked = false,
+        position = 'bottom_right';
+
+  factory HotBadgeConfig.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const HotBadgeConfig.defaults();
+    return HotBadgeConfig(
+      enabled: json['enabled'] as bool? ?? true,
+      text: json['text'] as String? ?? 'HOT',
+      bgColor: json['bg_color'] as String? ?? '#C8FF00',
+      textColor: json['text_color'] as String? ?? '#0F0F0F',
+      radiusTopLeft: (json['radius_top_left'] as num?)?.toDouble() ?? 14.0,
+      radiusTopRight: (json['radius_top_right'] as num?)?.toDouble() ?? 0.0,
+      radiusBottomLeft: (json['radius_bottom_left'] as num?)?.toDouble() ?? 0.0,
+      radiusBottomRight: (json['radius_bottom_right'] as num?)?.toDouble() ?? 11.0,
+      isRadiusLinked: json['is_radius_linked'] as bool? ?? false,
+      position: json['position'] as String? ?? 'bottom_right',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'text': text,
+        'bg_color': bgColor,
+        'text_color': textColor,
+        'radius_top_left': radiusTopLeft,
+        'radius_top_right': radiusTopRight,
+        'radius_bottom_left': radiusBottomLeft,
+        'radius_bottom_right': radiusBottomRight,
+        'is_radius_linked': isRadiusLinked,
+        'position': position,
+      };
+}
+
+@immutable
 class EventCardStyleConfig {
   final bool useCustomOverride;
   final String backgroundColor;
@@ -885,6 +976,8 @@ class EventCardStyleConfig {
   final double borderRadius;
   final String liveBadgeColor;
   final double elevation;
+  final bool enableGlow;
+  final HotBadgeConfig hotBadge;
 
   const EventCardStyleConfig({
     required this.useCustomOverride,
@@ -894,6 +987,8 @@ class EventCardStyleConfig {
     required this.borderRadius,
     required this.liveBadgeColor,
     required this.elevation,
+    this.enableGlow = true,
+    this.hotBadge = const HotBadgeConfig.defaults(),
   });
 
   const EventCardStyleConfig.defaults()
@@ -903,7 +998,9 @@ class EventCardStyleConfig {
         borderWidth = 1.0,
         borderRadius = 14.0,
         liveBadgeColor = '#FF2B2B',
-        elevation = 0.0;
+        elevation = 0.0,
+        enableGlow = true,
+        hotBadge = const HotBadgeConfig.defaults();
 
   factory EventCardStyleConfig.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const EventCardStyleConfig.defaults();
@@ -915,6 +1012,8 @@ class EventCardStyleConfig {
       borderRadius: (json['border_radius'] as num?)?.toDouble() ?? 14.0,
       liveBadgeColor: json['live_badge_color'] as String? ?? '#FF2B2B',
       elevation: (json['elevation'] as num?)?.toDouble() ?? 0.0,
+      enableGlow: json['enable_glow'] as bool? ?? true,
+      hotBadge: HotBadgeConfig.fromJson(_deepCastMap(json['hot_badge'])),
     );
   }
 
@@ -926,6 +1025,8 @@ class EventCardStyleConfig {
         'border_radius': borderRadius,
         'live_badge_color': liveBadgeColor,
         'elevation': elevation,
+        'enable_glow': enableGlow,
+        'hot_badge': hotBadge.toJson(),
       };
 }
 
@@ -1076,7 +1177,8 @@ class CategoryChipsStyleConfig {
         homeOverride = const ChipOverrideStyle.defaults(radius: 8.0),
         upcomingOverride = const ChipOverrideStyle.defaults(radius: 20.0);
 
-  factory CategoryChipsStyleConfig.fromJson(Map<String, dynamic>? json) {
+  factory CategoryChipsStyleConfig.fromJson(dynamic raw) {
+    final json = _deepCastMap(raw);
     if (json == null) return const CategoryChipsStyleConfig.defaults();
     return CategoryChipsStyleConfig(
       useCustomOverride: json['use_custom_override'] as bool? ?? false,
@@ -1089,11 +1191,11 @@ class CategoryChipsStyleConfig {
       borderWidth: (json['border_width'] as num?)?.toDouble() ?? 0.0,
       separateHomeAndUpcoming: json['separate_home_and_upcoming'] as bool? ?? false,
       homeOverride: ChipOverrideStyle.fromJson(
-        json['home_override'] as Map<String, dynamic>?,
+        _deepCastMap(json['home_override']),
         defaultRadius: 8.0,
       ),
       upcomingOverride: ChipOverrideStyle.fromJson(
-        json['upcoming_override'] as Map<String, dynamic>?,
+        _deepCastMap(json['upcoming_override']),
         defaultRadius: 20.0,
       ),
     );

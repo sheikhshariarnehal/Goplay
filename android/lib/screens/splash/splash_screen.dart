@@ -62,6 +62,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     ]).then((_) {
       if (!mounted) return;
 
+      ref.invalidate(uiConfigProvider);
+
       unawaited(ref.read(analyticsServiceProvider).initialize().catchError((e) {
         debugPrint('Analytics init error: $e');
       }));

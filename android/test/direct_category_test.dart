@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:goplay/providers/app_providers.dart';
 import 'package:goplay/services/stream_decryptor.dart';
 
 const testDirectCategoryEndpoints = {
