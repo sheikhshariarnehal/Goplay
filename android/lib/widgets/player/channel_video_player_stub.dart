@@ -1381,132 +1381,147 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                 top: widget.isFullscreen ? 22.0 : 8.0,
                 bottom: widget.isFullscreen ? 10.0 : 2.0,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Seek Bar / Timeline — wrapped in focusable seek widget
-                  RepaintBoundary(
-                    child: _FocusableSeekBar(
-                      position: _position,
-                      duration: _duration,
-                      bufferedPosition: _bufferedPosition,
-                      onSeek: _seekTo,
-                      onScrubbingChanged: (scrubbing) {
-                        setState(() {
-                          _isScrubbing = scrubbing;
-                        });
-                      },
-                      isFullscreen: widget.isFullscreen,
-                      onSeekRelative: _seekRelative,
-                      onInteract: widget.onInteract,
-                      focusNode: _seekBarFocusNode,
-                      onFocusDown: () => _bottomControlsFocusNode.requestFocus(),
-                      onFocusUp: () {
-                        if (widget.playPauseFocusNode != null) {
-                          widget.playPauseFocusNode!.requestFocus();
-                        } else {
-                          final ctx = _playPauseKey.currentContext;
-                          if (ctx != null) Focus.of(ctx).requestFocus();
-                        }
-                      },
-                    ),
-                  ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final availableWidth = constraints.maxWidth;
+                  final isCompact = availableWidth < 580;
+                  final hPadding = isCompact ? 14.0 : 24.0;
 
-                  // Bottom Buttons row — tightened immediately under seek bar
-                  Padding(
-                    padding: EdgeInsets.only(
-                      left: widget.isFullscreen ? 24.0 : 12.0,
-                      right: widget.isFullscreen ? 24.0 : 12.0,
-                      bottom: widget.isFullscreen ? 4.0 : 0.0,
-                      top: 0.0,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Time text / Adaptive Live badge with Tabular Figures
-                        if (_isLive && _duration == Duration.zero)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFC8FF00),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFC8FF00).withValues(alpha: 0.8),
-                                      blurRadius: 8,
-                                      spreadRadius: 1.5,
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Seek Bar / Timeline — wrapped in focusable seek widget
+                      RepaintBoundary(
+                        child: _FocusableSeekBar(
+                          position: _position,
+                          duration: _duration,
+                          bufferedPosition: _bufferedPosition,
+                          onSeek: _seekTo,
+                          onScrubbingChanged: (scrubbing) {
+                            setState(() {
+                              _isScrubbing = scrubbing;
+                            });
+                          },
+                          isFullscreen: widget.isFullscreen,
+                          onSeekRelative: _seekRelative,
+                          onInteract: widget.onInteract,
+                          focusNode: _seekBarFocusNode,
+                          onFocusDown: () => _bottomControlsFocusNode.requestFocus(),
+                          onFocusUp: () {
+                            if (widget.playPauseFocusNode != null) {
+                              widget.playPauseFocusNode!.requestFocus();
+                            } else {
+                              final ctx = _playPauseKey.currentContext;
+                              if (ctx != null) Focus.of(ctx).requestFocus();
+                            }
+                          },
+                        ),
+                      ),
+
+                      // Bottom Buttons row — tightened immediately under seek bar
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: hPadding,
+                          right: hPadding,
+                          bottom: widget.isFullscreen ? 4.0 : 0.0,
+                          top: 0.0,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // Time text / Adaptive Live badge with Tabular Figures
+                            if (_isLive && _duration == Duration.zero)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFC8FF00),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFFC8FF00).withValues(alpha: 0.8),
+                                          blurRadius: 8,
+                                          spreadRadius: 1.5,
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'LIVE',
+                                    style: TextStyle(
+                                      fontFamily: GoPlayType.family,
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              Flexible(
+                                fit: FlexFit.loose,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        _formatDuration(_position),
+                                        style: TextStyle(
+                                          fontFamily: GoPlayType.family,
+                                          color: Colors.white,
+                                          fontSize: isCompact ? 12.5 : 14,
+                                          fontWeight: FontWeight.w600,
+                                          fontFeatures: const [FontFeature.tabularFigures()],
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                      Text(
+                                        ' / ',
+                                        style: TextStyle(
+                                          fontFamily: GoPlayType.family,
+                                          color: Colors.white.withValues(alpha: 0.45),
+                                          fontSize: isCompact ? 11.5 : 13,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatDuration(_duration),
+                                        style: TextStyle(
+                                          fontFamily: GoPlayType.family,
+                                          color: Colors.white.withValues(alpha: 0.70),
+                                          fontSize: isCompact ? 12.5 : 14,
+                                          fontWeight: FontWeight.w500,
+                                          fontFeatures: const [FontFeature.tabularFigures()],
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'LIVE',
-                                style: TextStyle(
-                                  fontFamily: GoPlayType.family,
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.4,
-                                ),
-                              ),
-                            ],
-                          )
-                        else
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                _formatDuration(_position),
-                                style: const TextStyle(
-                                  fontFamily: GoPlayType.family,
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  fontFeatures: [FontFeature.tabularFigures()],
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                              Text(
-                                ' / ',
-                                style: TextStyle(
-                                  fontFamily: GoPlayType.family,
-                                  color: Colors.white.withValues(alpha: 0.45),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                              Text(
-                                _formatDuration(_duration),
-                                style: TextStyle(
-                                  fontFamily: GoPlayType.family,
-                                  color: Colors.white.withValues(alpha: 0.70),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  fontFeatures: [FontFeature.tabularFigures()],
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ],
-                          ),
 
-                        const Spacer(),
+                            const Spacer(),
 
-                        if (widget.isFullscreen)
-                          _buildFullscreenRightControls()
-                        else
-                          _buildPortraitRightControls(),
-                      ],
-                    ),
-                  ),
-                ],
+                            if (widget.isFullscreen)
+                              _buildFullscreenRightControls(availableWidth: availableWidth)
+                            else
+                              _buildPortraitRightControls(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -1515,7 +1530,14 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
     );
   }
 
-  Widget _buildFullscreenRightControls() {
+  Widget _buildFullscreenRightControls({required double availableWidth}) {
+    final bool isCompact = availableWidth < 580;
+    final double iconSize = isCompact ? 22.0 : 28.0;
+    final double btnPadding = isCompact ? 5.0 : 7.0;
+    final double btnSpacing = isCompact ? 4.0 : 6.0;
+    // On narrow screens (< 360px), hide PiP to guarantee zero overflow
+    final bool showPip = !isCompact || availableWidth >= 360;
+
     return Focus(
       canRequestFocus: false,
       onKeyEvent: (node, event) {
@@ -1539,29 +1561,32 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // 1. Picture-in-Picture Button
-          TvFocusable(
-            focusNode: _bottomControlsFocusNode,
-            isCircle: true,
-            focusColor: GoPlayTheme.primary,
-            onTap: _enterPiP,
-            child: const Padding(
-              padding: EdgeInsets.all(7),
-              child: Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white, size: 28),
+          if (showPip) ...[
+            TvFocusable(
+              focusNode: _bottomControlsFocusNode,
+              isCircle: true,
+              focusColor: GoPlayTheme.primary,
+              onTap: _enterPiP,
+              child: Padding(
+                padding: EdgeInsets.all(btnPadding),
+                child: Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white, size: iconSize),
+              ),
             ),
-          ),
-          const SizedBox(width: 6),
+            SizedBox(width: btnSpacing),
+          ],
 
           // 2. Aspect Ratio Button
           TvFocusable(
+            focusNode: showPip ? null : _bottomControlsFocusNode,
             isCircle: true,
             focusColor: GoPlayTheme.primary,
             onTap: _toggleAspectRatio,
-            child: const Padding(
-              padding: EdgeInsets.all(7),
-              child: Icon(Icons.fit_screen_rounded, color: Colors.white, size: 28),
+            child: Padding(
+              padding: EdgeInsets.all(btnPadding),
+              child: Icon(Icons.fit_screen_rounded, color: Colors.white, size: iconSize),
             ),
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: btnSpacing),
 
           // 3. Volume Button
           TvFocusable(
@@ -1569,17 +1594,17 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
             focusColor: GoPlayTheme.primary,
             onTap: _toggleMute,
             child: Padding(
-              padding: const EdgeInsets.all(7),
+              padding: EdgeInsets.all(btnPadding),
               child: Icon(
                 _isMuted || _volume == 0
                     ? Icons.volume_off_rounded
                     : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
                 color: Colors.white,
-                size: 28,
+                size: iconSize,
               ),
             ),
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: btnSpacing),
 
           // 4. Lock Button
           TvFocusable(
@@ -1590,12 +1615,12 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                 _isLocked = true;
               });
             },
-            child: const Padding(
-              padding: EdgeInsets.all(7),
-              child: Icon(Icons.lock_open_rounded, color: Colors.white, size: 28),
+            child: Padding(
+              padding: EdgeInsets.all(btnPadding),
+              child: Icon(Icons.lock_open_rounded, color: Colors.white, size: iconSize),
             ),
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: btnSpacing),
 
           // 5. Settings / Server Selection Button (when channel has multiple servers)
           if (widget.servers != null && widget.servers!.length > 1) ...[
@@ -1603,12 +1628,12 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
               isCircle: true,
               focusColor: GoPlayTheme.primary,
               onTap: _showServerSelectionModal,
-              child: const Padding(
-                padding: EdgeInsets.all(7),
-                child: Icon(Icons.tune_rounded, color: Colors.white, size: 28),
+              child: Padding(
+                padding: EdgeInsets.all(btnPadding),
+                child: Icon(Icons.tune_rounded, color: Colors.white, size: iconSize),
               ),
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: btnSpacing),
           ],
 
           // 6. Fullscreen Toggle Button
@@ -1618,11 +1643,11 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
               focusColor: GoPlayTheme.primary,
               onTap: widget.onFullscreenToggle,
               child: Padding(
-                padding: const EdgeInsets.all(7),
+                padding: EdgeInsets.all(btnPadding),
                 child: Icon(
                   widget.isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
                   color: Colors.white,
-                  size: 28,
+                  size: iconSize,
                 ),
               ),
             ),
