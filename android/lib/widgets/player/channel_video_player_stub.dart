@@ -1385,7 +1385,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                 builder: (context, constraints) {
                   final availableWidth = constraints.maxWidth;
                   final isCompact = availableWidth < 580;
-                  final hPadding = isCompact ? 14.0 : 24.0;
+                  final hPadding = isCompact ? 10.0 : 16.0;
 
                   return Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1536,7 +1536,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
   Widget _buildFullscreenRightControls({required double availableWidth}) {
     final bool isCompact = availableWidth < 580;
     final double iconSize = isCompact ? 22.0 : 28.0;
-    final double btnPadding = isCompact ? 5.0 : 7.0;
+    final double btnPadding = isCompact ? 5.0 : 6.0;
     final double btnSpacing = isCompact ? 4.0 : 6.0;
     // On narrow screens (< 360px), hide PiP to guarantee zero overflow
     final bool showPip = !isCompact || availableWidth >= 360;
@@ -1670,7 +1670,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
           focusColor: GoPlayTheme.primary,
           onTap: _enterPiP,
           child: const Padding(
-            padding: EdgeInsets.all(6),
+            padding: EdgeInsets.all(5),
             child: Icon(
               Icons.picture_in_picture_alt_rounded,
               color: Colors.white,
@@ -1678,7 +1678,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
             ),
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 5),
 
         // 2. Volume Button
         TvFocusable(
@@ -1686,7 +1686,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
           focusColor: GoPlayTheme.primary,
           onTap: _toggleMute,
           child: Padding(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(5),
             child: Icon(
               _isMuted || _volume == 0
                   ? Icons.volume_off_rounded
@@ -1696,7 +1696,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
             ),
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 5),
 
         // 3. Fullscreen Toggle Button
         if (widget.onFullscreenToggle != null)
@@ -1705,7 +1705,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
             focusColor: GoPlayTheme.primary,
             onTap: widget.onFullscreenToggle,
             child: Padding(
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(5),
               child: Icon(
                 widget.isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
                 color: Colors.white,
