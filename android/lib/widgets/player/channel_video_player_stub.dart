@@ -98,6 +98,18 @@ class ChannelVideoPlayerNative extends StatefulWidget implements ChannelVideoPla
   State<ChannelVideoPlayerNative> createState() => _ChannelVideoPlayerNativeState();
 }
 
+String _formatDuration(Duration d) {
+  final hrs = d.inHours;
+  final mins = d.inMinutes.remainder(60);
+  final secs = d.inSeconds.remainder(60);
+  if (hrs > 0) {
+    return '$hrs:${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+  return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+}
+
+enum _DragType { none, seek, brightness, volume }
+
 class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
   MethodChannel? _methodChannel;
   bool _isPlaying = false;
@@ -120,39 +132,125 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
   bool _isMuted = false;
 
   double _brightness = 0.5;
-  bool _isBrightnessDragging = false;
-  bool _isVolumeDragging = false;
   Timer? _osdHideTimer;
 
   final ValueNotifier<double?> _brightnessOsdNotifier = ValueNotifier<double?>(null);
   final ValueNotifier<double?> _volumeOsdNotifier = ValueNotifier<double?>(null);
 
-  void _onVerticalDragStart(DragStartDetails details) {
-    if (!widget.isFullscreen || _isLocked) return;
-    final screenWidth = MediaQuery.of(context).size.width;
-    _isBrightnessDragging = details.globalPosition.dx < screenWidth / 2;
-    _isVolumeDragging = !_isBrightnessDragging;
-    _osdHideTimer?.cancel();
+  // Unified Drag/Pan & Scrubbing state
+  _DragType _dragType = _DragType.none;
+  Offset _dragStartPosition = Offset.zero;
+  Duration _dragStartSeekPosition = Duration.zero;
 
-    if (_isBrightnessDragging) {
-      _brightnessOsdNotifier.value = _brightness;
+  bool _isScrubbing = false;
+  final ValueNotifier<Duration?> _scrubPositionNotifier = ValueNotifier<Duration?>(null);
+  final ValueNotifier<Duration?> _seekDeltaNotifier = ValueNotifier<Duration?>(null);
+
+  // 3-Zone Double Tap state
+  int _doubleTapSeekSeconds = 0;
+  bool _showDoubleTapLeft = false;
+  bool _showDoubleTapRight = false;
+  Timer? _doubleTapResetTimer;
+
+  bool _isLive = false;
+
+  void _onDoubleTapSeek(int seconds) {
+    if (_duration <= Duration.zero) return;
+    _doubleTapResetTimer?.cancel();
+    final isLeft = seconds < 0;
+    final currentAccum = (isLeft ? _showDoubleTapLeft : _showDoubleTapRight) ? _doubleTapSeekSeconds : 0;
+    final newSeconds = currentAccum + seconds;
+
+    _seekRelative(seconds, wakeControls: false);
+
+    setState(() {
+      _showDoubleTapLeft = isLeft;
+      _showDoubleTapRight = !isLeft;
+      _doubleTapSeekSeconds = newSeconds;
+    });
+
+    _doubleTapResetTimer = Timer(const Duration(milliseconds: 750), () {
+      if (mounted) {
+        setState(() {
+          _showDoubleTapLeft = false;
+          _showDoubleTapRight = false;
+          _doubleTapSeekSeconds = 0;
+        });
+      }
+    });
+  }
+
+  void _handleDoubleTapDown(TapDownDetails details) {
+    if (_isLocked) return;
+    final width = MediaQuery.of(context).size.width;
+    final x = details.localPosition.dx;
+    if (x < width * 0.35) {
+      _onDoubleTapSeek(-10);
+    } else if (x > width * 0.65) {
+      _onDoubleTapSeek(10);
     } else {
-      _volumeOsdNotifier.value = _volume;
+      widget.onFullscreenToggle?.call();
     }
   }
 
-  void _onVerticalDragUpdate(DragUpdateDetails details) {
-    if (!widget.isFullscreen || _isLocked) return;
-    final screenHeight = MediaQuery.of(context).size.height;
-    if (screenHeight <= 0) return;
+  void _handlePanStart(DragStartDetails details) {
+    if (_isLocked) return;
+    _dragStartPosition = details.localPosition;
+    _dragStartSeekPosition = _position;
+    _dragType = _DragType.none;
+    _osdHideTimer?.cancel();
+  }
 
-    final delta = -details.primaryDelta! / (screenHeight * 0.7);
+  void _handlePanUpdate(DragUpdateDetails details) {
+    if (_isLocked) return;
+    final screen = MediaQuery.of(context).size;
+    if (screen.width <= 0 || screen.height <= 0) return;
 
-    if (_isBrightnessDragging) {
+    final dx = details.localPosition.dx - _dragStartPosition.dx;
+    final dy = details.localPosition.dy - _dragStartPosition.dy;
+
+    // Disambiguate drag type if not decided yet
+    if (_dragType == _DragType.none) {
+      if (dx.abs() < 10 && dy.abs() < 10) return;
+
+      if (dx.abs() > dy.abs() * 1.2 && _duration > Duration.zero) {
+        // Horizontal swipe -> Seek scrub!
+        _dragType = _DragType.seek;
+        _isScrubbing = true;
+        _scrubPositionNotifier.value = _position;
+        _seekDeltaNotifier.value = Duration.zero;
+      } else if (dy.abs() > dx.abs()) {
+        // Vertical swipe -> Brightness (left half) or Volume (right half)
+        if (widget.isFullscreen) {
+          if (_dragStartPosition.dx < screen.width / 2) {
+            _dragType = _DragType.brightness;
+            _brightnessOsdNotifier.value = _brightness;
+          } else {
+            _dragType = _DragType.volume;
+            _volumeOsdNotifier.value = _volume;
+          }
+        }
+      }
+    }
+
+    // Process active drag
+    if (_dragType == _DragType.seek && _duration > Duration.zero) {
+      final scrubRangeMs = (_duration.inMilliseconds > 600000)
+          ? (_duration.inMilliseconds * 0.25).clamp(90000.0, 600000.0)
+          : (_duration.inMilliseconds > 0 ? _duration.inMilliseconds.toDouble() : 90000.0);
+      final seekDeltaMs = ((dx / screen.width) * scrubRangeMs).round();
+      final targetMs = (_dragStartSeekPosition.inMilliseconds + seekDeltaMs)
+          .clamp(0, _duration.inMilliseconds);
+      final targetPos = Duration(milliseconds: targetMs);
+      _scrubPositionNotifier.value = targetPos;
+      _seekDeltaNotifier.value = Duration(milliseconds: targetMs - _dragStartSeekPosition.inMilliseconds);
+    } else if (_dragType == _DragType.brightness) {
+      final delta = -details.delta.dy / (screen.height * 0.7);
       _brightness = (_brightness + delta).clamp(0.01, 1.0);
       _methodChannel?.invokeMethod('setBrightness', _brightness);
       _brightnessOsdNotifier.value = _brightness;
-    } else if (_isVolumeDragging) {
+    } else if (_dragType == _DragType.volume) {
+      final delta = -details.delta.dy / (screen.height * 0.7);
       _volume = (_volume + delta).clamp(0.0, 1.0);
       _isMuted = _volume == 0;
       _methodChannel?.invokeMethod('setVolume', _volume);
@@ -160,10 +258,23 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
     }
   }
 
-  void _onVerticalDragEnd(DragEndDetails details) {
-    _isBrightnessDragging = false;
-    _isVolumeDragging = false;
-    _startOsdHideTimer();
+  void _handlePanEnd(DragEndDetails details) {
+    if (_dragType == _DragType.seek) {
+      final finalTarget = _scrubPositionNotifier.value;
+      if (finalTarget != null) {
+        _seekTo(finalTarget);
+      }
+      _scrubPositionNotifier.value = null;
+      _seekDeltaNotifier.value = null;
+      _isScrubbing = false;
+    } else if (_dragType == _DragType.brightness || _dragType == _DragType.volume) {
+      _startOsdHideTimer();
+    }
+    _dragType = _DragType.none;
+  }
+
+  void _handlePanCancel() {
+    _handlePanEnd(DragEndDetails());
   }
 
   void _startOsdHideTimer() {
@@ -175,6 +286,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
       }
     });
   }
+
 
   // ignore: unused_field
   String _currentQuality = 'Auto';
@@ -413,24 +525,28 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
   }
 
   Future<void> _updateProgress() async {
-    if (_methodChannel == null) return;
+    if (_methodChannel == null || _isScrubbing) return;
     try {
       final state = await _methodChannel!.invokeMethod<Map>('getState');
       if (state != null && mounted) {
+        if (_isScrubbing) return;
         final newPlaying = state['isPlaying'] as bool? ?? _isPlaying;
         final newPos = Duration(milliseconds: (state['position'] as int? ?? 0));
         final newDur = Duration(milliseconds: (state['duration'] as int? ?? 0));
         final newBuf = Duration(milliseconds: (state['bufferedPosition'] as int? ?? 0));
+        final isLive = state['isLive'] as bool? ?? false;
 
         // Skip rebuild when controls are hidden AND position delta is <2s
         if (!widget.showControls &&
             newPlaying == _isPlaying &&
             (newPos - _position).abs() < const Duration(seconds: 2) &&
-            newDur == _duration) {
+            newDur == _duration &&
+            isLive == _isLive) {
           _isPlaying = newPlaying;
           _position = newPos;
           _duration = newDur;
           _bufferedPosition = newBuf;
+          _isLive = isLive;
           return;
         }
 
@@ -438,7 +554,8 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
         if (newPlaying == _isPlaying &&
             newPos == _position &&
             newDur == _duration &&
-            newBuf == _bufferedPosition) {
+            newBuf == _bufferedPosition &&
+            isLive == _isLive) {
           return;
         }
 
@@ -447,6 +564,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
           _position = newPos;
           _duration = newDur;
           _bufferedPosition = newBuf;
+          _isLive = isLive;
         });
       }
     } catch (e) {
@@ -520,6 +638,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
     );
   }
 
+  // ignore: unused_element
   void _enterPiP() async {
     try {
       await _pipChannel.invokeMethod('enterPiP');
@@ -593,6 +712,7 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
     }
   }
 
+  // ignore: unused_element
   void _showQualityMenu(TapDownDetails details) async {
     final position = details.globalPosition;
 
@@ -699,15 +819,6 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
     }
   }
 
-  String _formatDuration(Duration d) {
-    final hrs = d.inHours;
-    final mins = d.inMinutes.remainder(60);
-    final secs = d.inSeconds.remainder(60);
-    if (hrs > 0) {
-      return '$hrs:${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-    }
-    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-  }
 
   // ─── Widget lifecycle ────────────────────────────────────────────
 
@@ -847,16 +958,19 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
     });
   }
 
-  void _seekRelative(int seconds) {
+  void _seekRelative(int seconds, {bool wakeControls = true}) {
+    if (_duration <= Duration.zero) return;
     final newPos = _position + Duration(seconds: seconds);
     final target = newPos < Duration.zero
         ? Duration.zero
         : (newPos > _duration ? _duration : newPos);
     _seekTo(target);
-    if (!widget.showControls) {
-      widget.onTap?.call();
+    if (wakeControls) {
+      if (!widget.showControls) {
+        widget.onTap?.call();
+      }
+      widget.onInteract?.call();
     }
-    widget.onInteract?.call();
   }
 
   void _togglePlayPause() {
@@ -977,6 +1091,12 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
   @override
   void dispose() {
     _osdTimer?.cancel();
+    _osdHideTimer?.cancel();
+    _doubleTapResetTimer?.cancel();
+    _brightnessOsdNotifier.dispose();
+    _volumeOsdNotifier.dispose();
+    _scrubPositionNotifier.dispose();
+    _seekDeltaNotifier.dispose();
     _stopProgressTimer();
     _focusNode.dispose();
     _seekBarFocusNode.dispose();
@@ -1035,11 +1155,17 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                   ),
                 ),
 
-              // Tap overlay to show/hide controls
+              // Tap & gesture overlay to show/hide controls or double-tap / pan scrub when controls are hidden
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: widget.onTap,
+                  onDoubleTapDown: _handleDoubleTapDown,
+                  onDoubleTap: () {},
+                  onPanStart: _handlePanStart,
+                  onPanUpdate: _handlePanUpdate,
+                  onPanEnd: _handlePanEnd,
+                  onPanCancel: _handlePanCancel,
                   child: const SizedBox.shrink(),
                 ),
               ),
@@ -1062,6 +1188,56 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                   ),
                 ),
               ),
+
+              // ── 3-Zone Double Tap Seek Ripple Overlay (Left & Right) ──
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: _DoubleTapSeekOverlay(
+                    showLeft: _showDoubleTapLeft,
+                    showRight: _showDoubleTapRight,
+                    seconds: _doubleTapSeekSeconds,
+                  ),
+                ),
+              ),
+
+              // ── Swipe Scrub HUD Overlay (Centered) ──
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: _SwipeScrubOsd(
+                    scrubPositionNotifier: _scrubPositionNotifier,
+                    seekDeltaNotifier: _seekDeltaNotifier,
+                    duration: _duration,
+                  ),
+                ),
+              ),
+
+              // ── Brightness & Volume OSD (Fullscreen) ──
+              if (widget.isFullscreen) ...[
+                Positioned(
+                  left: 36,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: RepaintBoundary(
+                      child: IgnorePointer(
+                        child: _BrightnessOsd(notifier: _brightnessOsdNotifier),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 36,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: RepaintBoundary(
+                      child: IgnorePointer(
+                        child: _VolumeOsd(notifier: _volumeOsdNotifier),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
 
               // ── State machine status overlay ──
               Positioned(
@@ -1134,11 +1310,12 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: widget.onTap,
-            onDoubleTap: widget.onFullscreenToggle,
-            onVerticalDragStart: widget.isFullscreen ? _onVerticalDragStart : null,
-            onVerticalDragUpdate: widget.isFullscreen ? _onVerticalDragUpdate : null,
-            onVerticalDragEnd: widget.isFullscreen ? _onVerticalDragEnd : null,
-            onVerticalDragCancel: widget.isFullscreen ? () => _onVerticalDragEnd(DragEndDetails()) : null,
+            onDoubleTapDown: _handleDoubleTapDown,
+            onDoubleTap: () {},
+            onPanStart: _handlePanStart,
+            onPanUpdate: _handlePanUpdate,
+            onPanEnd: _handlePanEnd,
+            onPanCancel: _handlePanCancel,
             child: DecoratedBox(
               decoration: widget.isFullscreen
                   ? _kGradientOverlayFS
@@ -1146,146 +1323,6 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
             ),
           ),
         ),
-
-        // Brightness OSD Indicator (Left Side) — isolated repaint boundary
-        if (widget.isFullscreen)
-          Positioned(
-            left: 36,
-            top: 0,
-            bottom: 0,
-            child: Center(
-              child: RepaintBoundary(
-                child: ValueListenableBuilder<double?>(
-                  valueListenable: _brightnessOsdNotifier,
-                  builder: (context, value, child) {
-                    if (value == null) return const SizedBox.shrink();
-                    final percentage = (value * 100).round();
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            value > 0.6 ? Icons.wb_sunny_rounded : (value > 0.3 ? Icons.wb_sunny_outlined : Icons.brightness_3_rounded),
-                            color: GoPlayTheme.primary,
-                            size: 24,
-                            shadows: const [Shadow(color: Colors.black87, blurRadius: 4)],
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: 5,
-                            height: 90,
-                            child: Stack(
-                              alignment: Alignment.bottomCenter,
-                              children: [
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.25),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                ),
-                                FractionallySizedBox(
-                                  heightFactor: value,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: GoPlayTheme.primary,
-                                      borderRadius: BorderRadius.circular(3),
-                                      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 3)],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            '$percentage%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: GoPlayType.xs,
-                              fontWeight: FontWeight.w700,
-                              shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-
-        // Volume OSD Indicator (Right Side) — isolated repaint boundary
-        if (widget.isFullscreen)
-          Positioned(
-            right: 36,
-            top: 0,
-            bottom: 0,
-            child: Center(
-              child: RepaintBoundary(
-                child: ValueListenableBuilder<double?>(
-                  valueListenable: _volumeOsdNotifier,
-                  builder: (context, value, child) {
-                    if (value == null) return const SizedBox.shrink();
-                    final percentage = (value * 100).round();
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            value == 0
-                                ? Icons.volume_off_rounded
-                                : (value < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                            color: GoPlayTheme.primary,
-                            size: 24,
-                            shadows: const [Shadow(color: Colors.black87, blurRadius: 4)],
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: 5,
-                            height: 90,
-                            child: Stack(
-                              alignment: Alignment.bottomCenter,
-                              children: [
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.25),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                ),
-                                FractionallySizedBox(
-                                  heightFactor: value,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: GoPlayTheme.primary,
-                                      borderRadius: BorderRadius.circular(3),
-                                      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 3)],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            '$percentage%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: GoPlayType.xs,
-                              fontWeight: FontWeight.w700,
-                              shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
 
         // Central Playback Controls — isolated from seek-bar repaints
         Center(
@@ -1332,17 +1369,17 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
                   colors: [
-                    Colors.black.withAlpha(217),
-                    Colors.black.withAlpha(140),
-                    Colors.black.withAlpha(51),
+                    Colors.black.withValues(alpha: 0.95),
+                    Colors.black.withValues(alpha: 0.72),
+                    Colors.black.withValues(alpha: 0.32),
                     Colors.transparent,
                   ],
-                  stops: const [0.0, 0.45, 0.8, 1.0],
+                  stops: const [0.0, 0.45, 0.80, 1.0],
                 ),
               ),
               padding: EdgeInsets.only(
-                top: widget.isFullscreen ? 16.0 : 4.0,
-                bottom: widget.isFullscreen ? 8.0 : 0.0,
+                top: widget.isFullscreen ? 22.0 : 8.0,
+                bottom: widget.isFullscreen ? 10.0 : 2.0,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1355,6 +1392,11 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                       duration: _duration,
                       bufferedPosition: _bufferedPosition,
                       onSeek: _seekTo,
+                      onScrubbingChanged: (scrubbing) {
+                        setState(() {
+                          _isScrubbing = scrubbing;
+                        });
+                      },
                       isFullscreen: widget.isFullscreen,
                       onSeekRelative: _seekRelative,
                       onInteract: widget.onInteract,
@@ -1371,27 +1413,89 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
                     ),
                   ),
 
-                  const SizedBox(height: 2),
-
-                  // Bottom Buttons row
+                  // Bottom Buttons row — tightened immediately under seek bar
                   Padding(
                     padding: EdgeInsets.only(
                       left: widget.isFullscreen ? 24.0 : 12.0,
                       right: widget.isFullscreen ? 24.0 : 12.0,
-                      bottom: widget.isFullscreen ? 12.0 : 0.0,
+                      bottom: widget.isFullscreen ? 4.0 : 0.0,
                       top: 0.0,
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Time text
-                        Text(
-                          '${_formatDuration(_position)} · ${_formatDuration(_duration)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: GoPlayType.base,
-                            fontWeight: FontWeight.w400,
+                        // Time text / Adaptive Live badge with Tabular Figures
+                        if (_isLive && _duration == Duration.zero)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFC8FF00),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFC8FF00).withValues(alpha: 0.8),
+                                      blurRadius: 8,
+                                      spreadRadius: 1.5,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'LIVE',
+                                style: TextStyle(
+                                  fontFamily: GoPlayType.family,
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.4,
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                _formatDuration(_position),
+                                style: const TextStyle(
+                                  fontFamily: GoPlayType.family,
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                              Text(
+                                ' / ',
+                                style: TextStyle(
+                                  fontFamily: GoPlayType.family,
+                                  color: Colors.white.withValues(alpha: 0.45),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                              Text(
+                                _formatDuration(_duration),
+                                style: TextStyle(
+                                  fontFamily: GoPlayType.family,
+                                  color: Colors.white.withValues(alpha: 0.70),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
 
                         const Spacer(),
 
@@ -1434,75 +1538,96 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Aspect Ratio Button
+          // 1. Picture-in-Picture Button
           TvFocusable(
             focusNode: _bottomControlsFocusNode,
             isCircle: true,
-            onTap: _toggleAspectRatio,
-          child: const Padding(
-            padding: EdgeInsets.all(8),
-            child: Icon(Icons.fit_screen, color: Colors.white, size: 24),
-          ),
-        ),
-        const SizedBox(width: 4),
-        // Volume Button
-        TvFocusable(
-          isCircle: true,
-          onTap: _toggleMute,
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Icon(
-              _isMuted || _volume == 0
-                  ? Icons.volume_off
-                  : (_volume < 0.5 ? Icons.volume_down : Icons.volume_up),
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        // Lock Button
-        TvFocusable(
-          isCircle: true,
-          onTap: () {
-            setState(() {
-              _isLocked = true;
-            });
-          },
-          child: const Padding(
-            padding: EdgeInsets.all(8),
-            child: Icon(Icons.lock_open, color: Colors.white, size: 24),
-          ),
-        ),
-        const SizedBox(width: 4),
-        // Settings / Server Selection Button (when channel has multiple servers)
-        if (widget.servers != null && widget.servers!.length > 1) ...[
-          TvFocusable(
-            isCircle: true,
-            onTap: _showServerSelectionModal,
+            focusColor: GoPlayTheme.primary,
+            onTap: _enterPiP,
             child: const Padding(
-              padding: EdgeInsets.all(8),
-              child: Icon(Icons.settings_outlined, color: Colors.white, size: 24),
+              padding: EdgeInsets.all(7),
+              child: Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white, size: 28),
             ),
           ),
-          const SizedBox(width: 4),
-        ],
-        // Fullscreen Toggle Button
-        if (widget.onFullscreenToggle != null)
+          const SizedBox(width: 6),
+
+          // 2. Aspect Ratio Button
           TvFocusable(
             isCircle: true,
-            onTap: widget.onFullscreenToggle,
+            focusColor: GoPlayTheme.primary,
+            onTap: _toggleAspectRatio,
+            child: const Padding(
+              padding: EdgeInsets.all(7),
+              child: Icon(Icons.fit_screen_rounded, color: Colors.white, size: 28),
+            ),
+          ),
+          const SizedBox(width: 6),
+
+          // 3. Volume Button
+          TvFocusable(
+            isCircle: true,
+            focusColor: GoPlayTheme.primary,
+            onTap: _toggleMute,
             child: Padding(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(7),
               child: Icon(
-                widget.isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                _isMuted || _volume == 0
+                    ? Icons.volume_off_rounded
+                    : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
                 color: Colors.white,
-                size: 24,
+                size: 28,
               ),
             ),
           ),
-      ],
-    ),
+          const SizedBox(width: 6),
+
+          // 4. Lock Button
+          TvFocusable(
+            isCircle: true,
+            focusColor: GoPlayTheme.primary,
+            onTap: () {
+              setState(() {
+                _isLocked = true;
+              });
+            },
+            child: const Padding(
+              padding: EdgeInsets.all(7),
+              child: Icon(Icons.lock_open_rounded, color: Colors.white, size: 28),
+            ),
+          ),
+          const SizedBox(width: 6),
+
+          // 5. Settings / Server Selection Button (when channel has multiple servers)
+          if (widget.servers != null && widget.servers!.length > 1) ...[
+            TvFocusable(
+              isCircle: true,
+              focusColor: GoPlayTheme.primary,
+              onTap: _showServerSelectionModal,
+              child: const Padding(
+                padding: EdgeInsets.all(7),
+                child: Icon(Icons.tune_rounded, color: Colors.white, size: 28),
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+
+          // 6. Fullscreen Toggle Button
+          if (widget.onFullscreenToggle != null)
+            TvFocusable(
+              isCircle: true,
+              focusColor: GoPlayTheme.primary,
+              onTap: widget.onFullscreenToggle,
+              child: Padding(
+                padding: const EdgeInsets.all(7),
+                child: Icon(
+                  widget.isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1514,30 +1639,32 @@ class _ChannelVideoPlayerNativeState extends State<ChannelVideoPlayerNative> {
         // Volume Button
         TvFocusable(
           isCircle: true,
+          focusColor: GoPlayTheme.primary,
           onTap: _toggleMute,
           child: Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(7),
             child: Icon(
               _isMuted || _volume == 0
-                  ? Icons.volume_off
-                  : (_volume < 0.5 ? Icons.volume_down : Icons.volume_up),
+                  ? Icons.volume_off_rounded
+                  : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
               color: Colors.white,
-              size: 24,
+              size: 26,
             ),
           ),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 6),
         // Fullscreen Toggle Button
         if (widget.onFullscreenToggle != null)
           TvFocusable(
             isCircle: true,
+            focusColor: GoPlayTheme.primary,
             onTap: widget.onFullscreenToggle,
             child: Padding(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(7),
               child: Icon(
-                widget.isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                widget.isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
                 color: Colors.white,
-                size: 24,
+                size: 26,
               ),
             ),
           ),
@@ -2244,6 +2371,7 @@ class _FocusableSeekBar extends StatefulWidget {
   final Duration duration;
   final Duration bufferedPosition;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<bool>? onScrubbingChanged;
   final bool isFullscreen;
   final void Function(int seconds) onSeekRelative;
   final VoidCallback? onInteract;
@@ -2256,6 +2384,7 @@ class _FocusableSeekBar extends StatefulWidget {
     required this.duration,
     required this.bufferedPosition,
     required this.onSeek,
+    this.onScrubbingChanged,
     required this.isFullscreen,
     required this.onSeekRelative,
     this.onInteract,
@@ -2333,6 +2462,7 @@ class _FocusableSeekBarState extends State<_FocusableSeekBar> {
             duration: widget.duration,
             bufferedPosition: widget.bufferedPosition,
             onSeek: widget.onSeek,
+            onScrubbingChanged: widget.onScrubbingChanged,
             isFullscreen: widget.isFullscreen,
           ),
         ),
@@ -2343,12 +2473,13 @@ class _FocusableSeekBarState extends State<_FocusableSeekBar> {
 
 // ─── Progress Bar ─────────────────────────────────────────────────
 
-/// Custom Seek Bar ProgressBar with Buffer Indicator
-class PlayerProgressBar extends StatelessWidget {
+/// Custom Seek Bar ProgressBar with Buffer Indicator, 44px Touch Target & Floating Time Pill
+class PlayerProgressBar extends StatefulWidget {
   final Duration position;
   final Duration duration;
   final Duration bufferedPosition;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<bool>? onScrubbingChanged;
   final bool isFullscreen;
 
   const PlayerProgressBar({
@@ -2357,89 +2488,195 @@ class PlayerProgressBar extends StatelessWidget {
     required this.duration,
     required this.bufferedPosition,
     required this.onSeek,
+    this.onScrubbingChanged,
     required this.isFullscreen,
   });
 
   @override
+  State<PlayerProgressBar> createState() => _PlayerProgressBarState();
+}
+
+class _PlayerProgressBarState extends State<PlayerProgressBar> {
+  bool _isDragging = false;
+  double _dragProgress = 0.0;
+
+  double get _currentProgress {
+    if (_isDragging) return _dragProgress;
+    if (widget.duration <= Duration.zero) return 0.0;
+    return (widget.position.inMilliseconds / widget.duration.inMilliseconds).clamp(0.0, 1.0);
+  }
+
+  Duration get _currentScrubDuration {
+    if (widget.duration <= Duration.zero) return Duration.zero;
+    final ms = (widget.duration.inMilliseconds * _currentProgress).round();
+    return Duration(milliseconds: ms);
+  }
+
+  void _onDragStart(BuildContext context, double localX) {
+    if (widget.duration <= Duration.zero) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final width = box.size.width;
+    if (width <= 0) return;
+
+    final pct = (localX / width).clamp(0.0, 1.0);
+    setState(() {
+      _isDragging = true;
+      _dragProgress = pct;
+    });
+    widget.onScrubbingChanged?.call(true);
+  }
+
+  void _onDragUpdate(BuildContext context, double localX) {
+    if (!_isDragging || widget.duration <= Duration.zero) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final width = box.size.width;
+    if (width <= 0) return;
+
+    final pct = (localX / width).clamp(0.0, 1.0);
+    setState(() {
+      _dragProgress = pct;
+    });
+  }
+
+  void _onDragEnd() {
+    if (!_isDragging) return;
+    final target = _currentScrubDuration;
+    setState(() {
+      _isDragging = false;
+    });
+    widget.onSeek(target);
+    widget.onScrubbingChanged?.call(false);
+  }
+
+  void _onDragCancel() {
+    if (!_isDragging) return;
+    setState(() {
+      _isDragging = false;
+    });
+    widget.onScrubbingChanged?.call(false);
+  }
+
+  void _onTapDown(BuildContext context, double localX) {
+    if (widget.duration <= Duration.zero) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final width = box.size.width;
+    if (width <= 0) return;
+
+    final pct = (localX / width).clamp(0.0, 1.0);
+    final targetMs = (widget.duration.inMilliseconds * pct).round();
+    widget.onSeek(Duration(milliseconds: targetMs));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (duration == Duration.zero) {
+    if (widget.duration <= Duration.zero) {
       return const SizedBox(height: 12);
     }
 
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: 0.0,
-        vertical: isFullscreen ? 2.0 : 0.0,
-      ),
-      child: Builder(
-        builder: (innerContext) {
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragUpdate: (details) {
-              _handleDrag(innerContext, details.localPosition.dx);
-            },
-            onTapDown: (details) {
-              _handleDrag(innerContext, details.localPosition.dx);
-            },
-            child: SizedBox(
-              height: 10,
-              width: double.infinity,
-              child: CustomPaint(
-                painter: _ProgressBarPainter(
-                  position: position,
-                  duration: duration,
-                  bufferedPosition: bufferedPosition,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalWidth = constraints.maxWidth;
+        final thumbX = totalWidth * _currentProgress;
+        final pillLeft = (thumbX - 35).clamp(0.0, totalWidth > 70 ? totalWidth - 70 : 0.0);
+
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            // 44px comfortable touch target
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (details) => _onDragStart(context, details.localPosition.dx),
+              onHorizontalDragUpdate: (details) => _onDragUpdate(context, details.localPosition.dx),
+              onHorizontalDragEnd: (_) => _onDragEnd(),
+              onHorizontalDragCancel: () => _onDragCancel(),
+              onTapDown: (details) => _onTapDown(context, details.localPosition.dx),
+              child: SizedBox(
+                height: 30.0,
+                width: double.infinity,
+                child: Center(
+                  child: CustomPaint(
+                    size: Size(totalWidth, _isDragging ? 5.0 : 3.0),
+                    painter: _ProgressBarPainter(
+                      progress: _currentProgress,
+                      bufferedProgress: widget.duration.inMilliseconds > 0
+                          ? (widget.bufferedPosition.inMilliseconds / widget.duration.inMilliseconds).clamp(0.0, 1.0)
+                          : 0.0,
+                      isDragging: _isDragging,
+                    ),
+                  ),
                 ),
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
 
-  void _handleDrag(BuildContext context, double localX) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box != null && duration > Duration.zero) {
-      final width = box.size.width;
-      final pct = (localX / width).clamp(0.0, 1.0);
-      final targetMs = (duration.inMilliseconds * pct).round();
-      onSeek(Duration(milliseconds: targetMs));
-    }
+            // Floating Time Pill hovering above finger when dragging
+            if (_isDragging)
+              Positioned(
+                left: pillLeft,
+                top: -24,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xE6141418),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: GoPlayTheme.primary.withValues(alpha: 0.6),
+                        width: 1.0,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black87,
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      _formatDuration(_currentScrubDuration),
+                      style: const TextStyle(
+                        fontFamily: GoPlayType.family,
+                        color: GoPlayTheme.primary,
+                        fontSize: GoPlayType.xs,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 }
 
 class _ProgressBarPainter extends CustomPainter {
-  final Duration position;
-  final Duration duration;
-  final Duration bufferedPosition;
+  final double progress;
+  final double bufferedProgress;
+  final bool isDragging;
 
-  // Pre-computed percentages — avoids floating-point division inside paint()
-  final double _posPct;
-  final double _bufPct;
-
-  // Cached Paint objects — allocated once, not per paint() call
-  static final _paintBg    = Paint()..color = Colors.white12;
-  static final _paintBuf   = Paint()..color = Colors.white30;
-  static final _paintAct   = Paint()..color = Colors.white;
-  static final _paintThumb = Paint()..color = Colors.white;
+  static final _paintBg = Paint()..color = Colors.white.withValues(alpha: 0.18);
+  static final _paintBuf = Paint()..color = Colors.white.withValues(alpha: 0.38);
+  static final _paintAct = Paint()..color = GoPlayTheme.primary;
+  static final _paintThumb = Paint()..color = GoPlayTheme.primary;
+  static final _paintThumbGlow = Paint()
+    ..color = GoPlayTheme.primary.withValues(alpha: 0.35)
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
 
   _ProgressBarPainter({
-    required this.position,
-    required this.duration,
-    required this.bufferedPosition,
-  })  : _posPct = duration.inMilliseconds > 0
-            ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
-            : 0.0,
-        _bufPct = duration.inMilliseconds > 0
-            ? (bufferedPosition.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
-            : 0.0;
+    required this.progress,
+    required this.bufferedProgress,
+    required this.isDragging,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final y = size.height / 2;
-    const h = 2.0;
-    const r = Radius.circular(h / 2);
+    final h = size.height;
+    final r = Radius.circular(h / 2);
 
     // Background track
     canvas.drawRRect(
@@ -2447,35 +2684,47 @@ class _ProgressBarPainter extends CustomPainter {
       _paintBg,
     );
 
-    if (duration == Duration.zero) return;
-
     // Buffered track
-    if (_bufPct > 0) {
+    if (bufferedProgress > 0) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-            Rect.fromLTWH(0, y - h / 2, size.width * _bufPct, h), r),
+          Rect.fromLTWH(0, y - h / 2, size.width * bufferedProgress, h),
+          r,
+        ),
         _paintBuf,
       );
     }
 
-    // Played track
-    if (_posPct > 0) {
+    // Active track
+    if (progress > 0) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-            Rect.fromLTWH(0, y - h / 2, size.width * _posPct, h), r),
+          Rect.fromLTWH(0, y - h / 2, size.width * progress, h),
+          r,
+        ),
         _paintAct,
       );
     }
 
     // Thumb handle
-    canvas.drawCircle(Offset(size.width * _posPct, y), 4.5, _paintThumb);
+    final thumbX = size.width * progress;
+    if (isDragging) {
+      // Glow ring
+      canvas.drawCircle(Offset(thumbX, y), 12.0, _paintThumbGlow);
+      // Main Thumb
+      canvas.drawCircle(Offset(thumbX, y), 7.5, _paintThumb);
+      // Inner dot
+      canvas.drawCircle(Offset(thumbX, y), 2.5, Paint()..color = Colors.black);
+    } else {
+      canvas.drawCircle(Offset(thumbX, y), 5.0, _paintThumb);
+    }
   }
 
   @override
   bool shouldRepaint(covariant _ProgressBarPainter old) {
-    return old.position != position ||
-        old.duration != duration ||
-        old.bufferedPosition != bufferedPosition;
+    return old.progress != progress ||
+        old.bufferedProgress != bufferedProgress ||
+        old.isDragging != isDragging;
   }
 }
 
@@ -2525,6 +2774,321 @@ class _TvPlayerOsd extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DoubleTapSeekOverlay extends StatelessWidget {
+  final bool showLeft;
+  final bool showRight;
+  final int seconds;
+
+  const _DoubleTapSeekOverlay({
+    required this.showLeft,
+    required this.showRight,
+    required this.seconds,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!showLeft && !showRight) return const SizedBox.shrink();
+
+    final isLeft = showLeft;
+    final width = MediaQuery.of(context).size.width;
+
+    return Align(
+      alignment: isLeft ? Alignment.centerLeft : Alignment.centerRight,
+      child: Container(
+        width: width * 0.35,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.horizontal(
+            right: isLeft ? const Radius.elliptical(80, 220) : Radius.zero,
+            left: !isLeft ? const Radius.elliptical(80, 220) : Radius.zero,
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isLeft ? Icons.fast_rewind_rounded : Icons.fast_forward_rounded,
+                color: GoPlayTheme.primary,
+                size: 38,
+                shadows: const [
+                  Shadow(
+                    color: Colors.black87,
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${seconds.abs()}s',
+                style: const TextStyle(
+                  fontFamily: GoPlayType.family,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: GoPlayType.base,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black87,
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwipeScrubOsd extends StatelessWidget {
+  final ValueNotifier<Duration?> scrubPositionNotifier;
+  final ValueNotifier<Duration?> seekDeltaNotifier;
+  final Duration duration;
+
+  const _SwipeScrubOsd({
+    required this.scrubPositionNotifier,
+    required this.seekDeltaNotifier,
+    required this.duration,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Duration?>(
+      valueListenable: scrubPositionNotifier,
+      builder: (context, scrubPos, _) {
+        if (scrubPos == null) return const SizedBox.shrink();
+
+        return ValueListenableBuilder<Duration?>(
+          valueListenable: seekDeltaNotifier,
+          builder: (context, delta, _) {
+            final deltaDuration = delta ?? Duration.zero;
+            final isNeg = deltaDuration.isNegative;
+            final progress = duration.inMilliseconds > 0
+                ? (scrubPos.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
+                : 0.0;
+
+            return Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xE6141418),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: GoPlayTheme.primary.withValues(alpha: 0.5),
+                    width: 1.2,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black87,
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isNeg ? Icons.fast_rewind_rounded : Icons.fast_forward_rounded,
+                          color: GoPlayTheme.primary,
+                          size: 26,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${isNeg ? '-' : '+'}${_formatDuration(deltaDuration.abs())}',
+                          style: const TextStyle(
+                            fontFamily: GoPlayType.family,
+                            color: GoPlayTheme.primary,
+                            fontSize: GoPlayType.lg,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${_formatDuration(scrubPos)} / ${_formatDuration(duration)}',
+                      style: const TextStyle(
+                        fontFamily: GoPlayType.family,
+                        color: Colors.white,
+                        fontSize: GoPlayType.sm,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: 160,
+                      height: 4,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: Stack(
+                          children: [
+                            Container(color: Colors.white24),
+                            FractionallySizedBox(
+                              widthFactor: progress,
+                              child: Container(color: GoPlayTheme.primary),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _BrightnessOsd extends StatelessWidget {
+  final ValueNotifier<double?> notifier;
+
+  const _BrightnessOsd({required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double?>(
+      valueListenable: notifier,
+      builder: (context, value, _) {
+        if (value == null) return const SizedBox.shrink();
+        final percentage = (value * 100).round();
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                value > 0.6
+                    ? Icons.wb_sunny_rounded
+                    : (value > 0.3 ? Icons.wb_sunny_outlined : Icons.brightness_3_rounded),
+                color: GoPlayTheme.primary,
+                size: 24,
+                shadows: const [Shadow(color: Colors.black87, blurRadius: 4)],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: 5,
+                height: 90,
+                child: Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      heightFactor: value,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: GoPlayTheme.primary,
+                          borderRadius: BorderRadius.circular(3),
+                          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 3)],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '$percentage%',
+                style: const TextStyle(
+                  fontFamily: GoPlayType.family,
+                  color: Colors.white,
+                  fontSize: GoPlayType.xs,
+                  fontWeight: FontWeight.w700,
+                  shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _VolumeOsd extends StatelessWidget {
+  final ValueNotifier<double?> notifier;
+
+  const _VolumeOsd({required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double?>(
+      valueListenable: notifier,
+      builder: (context, value, _) {
+        if (value == null) return const SizedBox.shrink();
+        final percentage = (value * 100).round();
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                value == 0
+                    ? Icons.volume_off_rounded
+                    : (value < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
+                color: GoPlayTheme.primary,
+                size: 24,
+                shadows: const [Shadow(color: Colors.black87, blurRadius: 4)],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: 5,
+                height: 90,
+                child: Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      heightFactor: value,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: GoPlayTheme.primary,
+                          borderRadius: BorderRadius.circular(3),
+                          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 3)],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '$percentage%',
+                style: const TextStyle(
+                  fontFamily: GoPlayType.family,
+                  color: Colors.white,
+                  fontSize: GoPlayType.xs,
+                  fontWeight: FontWeight.w700,
+                  shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
