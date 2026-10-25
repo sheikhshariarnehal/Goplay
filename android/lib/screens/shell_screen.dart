@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
+import '../core/theme.dart';
 import '../core/typography.dart';
 import '../widgets/tv_focus_wrapper.dart';
 
@@ -23,6 +24,7 @@ class ShellScreen extends ConsumerStatefulWidget {
 
 class _ShellScreenState extends ConsumerState<ShellScreen> {
   late final List<FocusNode> _navFocusNodes;
+  DateTime? _lastBackPressTime;
 
   @override
   void initState() {
@@ -92,8 +94,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
                     children: [
                       _RailNavItem(
                         focusNode: _navFocusNodes[0],
-                        icon: Icons.grid_view_outlined,
-                        selectedIcon: Icons.grid_view_rounded,
+                        icon: Icons.home_outlined,
+                        selectedIcon: Icons.home_rounded,
                         label: 'Home',
                         isSelected: index == 0,
                         onTap: () => _goBranch(0),
@@ -102,8 +104,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
                         const SizedBox(height: 8),
                         _RailNavItem(
                           focusNode: _navFocusNodes[1],
-                          icon: Icons.category_outlined,
-                          selectedIcon: Icons.category_rounded,
+                          icon: Icons.dashboard_customize_outlined,
+                          selectedIcon: Icons.dashboard_customize_rounded,
                           label: 'Categories',
                           isSelected: index == 1,
                           onTap: () => _goBranch(1),
@@ -165,8 +167,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
               children: [
                 _NavItem(
                   focusNode: _navFocusNodes[0],
-                  icon: Icons.grid_view_outlined,
-                  selectedIcon: Icons.grid_view_rounded,
+                  icon: Icons.home_outlined,
+                  selectedIcon: Icons.home_rounded,
                   label: 'Home',
                   isSelected: index == 0,
                   onTap: () => _goBranch(0),
@@ -174,8 +176,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
                 if (ref.watch(uiConfigProvider).navigationBranding.enabledTabs.contains('categories'))
                   _NavItem(
                     focusNode: _navFocusNodes[1],
-                    icon: Icons.category_outlined,
-                    selectedIcon: Icons.category_rounded,
+                    icon: Icons.dashboard_customize_outlined,
+                    selectedIcon: Icons.dashboard_customize_rounded,
                     label: 'Categories',
                     isSelected: index == 1,
                     onTap: () => _goBranch(1),
@@ -206,9 +208,63 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       );
     }
 
-    return Focus(
-      canRequestFocus: false,
-      onKeyEvent: (node, event) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (index != 0) {
+          // Any non-home tab (Categories, Channels, Upcoming) smoothly backs to Home tab
+          _goBranch(0);
+        } else {
+          // Home tab requires double-back to exit within 2 seconds
+          final now = DateTime.now();
+          if (_lastBackPressTime == null ||
+              now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+            _lastBackPressTime = now;
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.exit_to_app_rounded,
+                      color: GoPlayTheme.primary,
+                      size: 18,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Press back again to exit',
+                      style: TextStyle(
+                        fontFamily: GoPlayType.family,
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+                width: 240,
+                backgroundColor: const Color(0xFF1E2024),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                  side: BorderSide(
+                    color: Color(0x33C8FF00),
+                    width: 0.8,
+                  ),
+                ),
+              ),
+            );
+          } else {
+            SystemNavigator.pop();
+          }
+        }
+      },
+      child: Focus(
+        canRequestFocus: false,
+        onKeyEvent: (node, event) {
         if (event is KeyDownEvent || event is KeyRepeatEvent) {
           final key = event.logicalKey;
           if (key == LogicalKeyboardKey.digit1 ||
@@ -250,7 +306,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
         }
         return KeyEventResult.ignored;
       },
-      child: content,
+        child: content,
+      ),
     );
   }
 }

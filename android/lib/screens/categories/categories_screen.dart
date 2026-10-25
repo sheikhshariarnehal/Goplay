@@ -32,6 +32,12 @@ class CategoriesScreen extends ConsumerStatefulWidget {
 class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
   // Navigation & selection
   Category? _selectedCategory;
+  String? _lastSelectedCategoryId;
+  final Map<String, FocusNode> _categoryFocusNodes = {};
+
+  FocusNode _getFocusNodeForCategory(String id) {
+    return _categoryFocusNodes.putIfAbsent(id, () => FocusNode(debugLabel: 'Cat_$id'));
+  }
 
   // Search states
   bool _isCategorySearchOpen = false;
@@ -73,11 +79,16 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
     _channelSearchController.dispose();
     _categoryScrollController.dispose();
     _channelScrollController.dispose();
+    for (final fn in _categoryFocusNodes.values) {
+      fn.dispose();
+    }
+    _categoryFocusNodes.clear();
     super.dispose();
   }
 
   void _onCategoryTapped(Category category) {
     HapticFeedback.selectionClick();
+    _lastSelectedCategoryId = category.id;
     setState(() {
       _selectedCategory = category;
       _isChannelSearchOpen = false;
@@ -99,6 +110,11 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
       _selectedCategory = null;
     });
     ref.read(playzSelectedCategoryProvider.notifier).select(null);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _lastSelectedCategoryId != null) {
+        _categoryFocusNodes[_lastSelectedCategoryId]?.requestFocus();
+      }
+    });
   }
 
   void _toggleCategorySearch() {
@@ -300,9 +316,10 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
 
               final columns = _calculateCategoryColumns(context);
               return GridView.builder(
+                key: const PageStorageKey('categories_grid_page_storage'),
                 controller: _categoryScrollController,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
-                cacheExtent: 350.0,
+                cacheExtent: 500.0,
                 physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
@@ -319,6 +336,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                   return _CategoryPillCard(
                     category: category,
                     channelCount: count,
+                    focusNode: _getFocusNodeForCategory(category.id),
                     onTap: () => _onCategoryTapped(category),
                   );
                 },
@@ -529,18 +547,21 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                   final gridDelegate = _buildChannelGridDelegate(context, availableWidth);
 
                   return GridView.builder(
+                    key: PageStorageKey('category_channels_${category.id}'),
                     controller: _channelScrollController,
                     padding: const EdgeInsets.fromLTRB(_kGridEdgeInset, 8, _kGridEdgeInset, 88),
-                    cacheExtent: 350.0,
+                    cacheExtent: 500.0,
                     physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                     gridDelegate: gridDelegate,
                     itemCount: displayList.length,
                     itemBuilder: (context, index) {
                       final ch = displayList[index];
-                      return ChannelCard(
-                        key: ValueKey(ch.id),
-                        channel: ch,
-                        scope: displayList,
+                      return RepaintBoundary(
+                        child: ChannelCard(
+                          key: ValueKey(ch.id),
+                          channel: ch,
+                          scope: displayList,
+                        ),
                       );
                     },
                   );
@@ -809,11 +830,13 @@ class _CategoryPillCard extends ConsumerWidget {
   final Category category;
   final int? channelCount;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
 
   const _CategoryPillCard({
     required this.category,
     this.channelCount,
     required this.onTap,
+    this.focusNode,
   });
 
   @override
@@ -828,6 +851,7 @@ class _CategoryPillCard extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
 
     return TvFocusable(
+      focusNode: focusNode,
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       focusedScale: 1.03,
@@ -844,7 +868,9 @@ class _CategoryPillCard extends ConsumerWidget {
           children: [
             // Avatar plate (40x40)
             if (catConfig.showCategoryEmblems) ...[
-              _buildAvatar(visuals),
+              RepaintBoundary(
+                child: _buildAvatar(visuals),
+              ),
               const SizedBox(width: 10),
             ],
 
@@ -931,8 +957,8 @@ class _CategoryPillCard extends ConsumerWidget {
           ? CachedNetworkImage(
               imageUrl: category.iconUrl!,
               fit: BoxFit.cover,
-              memCacheWidth: 96,
-              memCacheHeight: 96,
+              memCacheWidth: 80,
+              memCacheHeight: 80,
               fadeInDuration: const Duration(milliseconds: 150),
               placeholder: (context, url) => _buildFallbackVisual(visuals),
               errorWidget: (context, url, error) => _buildFallbackVisual(visuals),
