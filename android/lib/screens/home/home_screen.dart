@@ -307,7 +307,10 @@ class HomeScreen extends ConsumerWidget {
               title: 'Trending Channels',
               actionLabel: 'See all',
               onAction: () {
-                ref.read(selectedCategoryProvider.notifier).select('trending');
+                final isTrendingEnabled = ref.read(showTrendingTabProvider);
+                ref.read(selectedCategoryProvider.notifier).select(
+                  isTrendingEnabled ? 'trending' : 'all',
+                );
                 context.go('/channels');
               },
             ),
@@ -354,7 +357,10 @@ class HomeScreen extends ConsumerWidget {
             title: 'Trending Channels',
             actionLabel: 'See all',
             onAction: () {
-              ref.read(selectedCategoryProvider.notifier).select('trending');
+              final isTrendingEnabled = ref.read(showTrendingTabProvider);
+              ref.read(selectedCategoryProvider.notifier).select(
+                isTrendingEnabled ? 'trending' : 'all',
+              );
               context.go('/channels');
             },
           ),

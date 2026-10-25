@@ -492,9 +492,27 @@ final selectedCategoryProvider =
 
 class SelectedCategoryNotifier extends Notifier<String> {
   @override
-  String build() => 'trending';
+  String build() => 'all';
 
   void select(String category) => state = category;
+}
+
+// ─── User Preference: Show Trending Tab ──────────────────────────
+final showTrendingTabProvider =
+    NotifierProvider<ShowTrendingTabNotifier, bool>(
+  ShowTrendingTabNotifier.new,
+);
+
+class ShowTrendingTabNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    return ref.read(cacheServiceProvider).getShowTrendingTabUserPref();
+  }
+
+  Future<void> toggle(bool enabled) async {
+    state = enabled;
+    await ref.read(cacheServiceProvider).saveShowTrendingTabUserPref(enabled);
+  }
 }
 
 // ─── Favorites (persisted to Hive) ────────────────────────────

@@ -183,6 +183,18 @@ class CacheService {
     await box.put('channel_ids', ids.toList(growable: false));
   }
 
+  // ─── User Preference: Show Trending Tab ─────────────────────
+  bool getShowTrendingTabUserPref() {
+    final box = _boxOrNull(AppConstants.settingsBox);
+    return box?.get('user_show_trending_tab') as bool? ?? false;
+  }
+
+  Future<void> saveShowTrendingTabUserPref(bool enabled) async {
+    final box = _boxOrNull(AppConstants.settingsBox);
+    if (box == null) return;
+    await box.put('user_show_trending_tab', enabled);
+  }
+
   // ─── Sync Versions ──────────────────────────────────────────
   int? getLocalChannelsVersion() =>
       _boxOrNull(AppConstants.settingsBox)?.get('channels_version') as int?;
@@ -322,3 +334,4 @@ class CacheService {
     await box.put('ui_config_version', version);
   }
 }
+

@@ -276,7 +276,7 @@ class ChannelsTabConfig {
   const ChannelsTabConfig.defaults()
       : showTabIcons = true,
         showTabCounts = true,
-        showTrendingTab = true,
+        showTrendingTab = false,
         showFavoriteTab = true,
         autoHideFavoriteTabWhenEmpty = true,
         showAllTab = true,
@@ -292,7 +292,7 @@ class ChannelsTabConfig {
     return ChannelsTabConfig(
       showTabIcons: json['show_tab_icons'] as bool? ?? true,
       showTabCounts: json['show_tab_counts'] as bool? ?? true,
-      showTrendingTab: json['show_trending_tab'] as bool? ?? true,
+      showTrendingTab: json['show_trending_tab'] as bool? ?? false,
       showFavoriteTab: json['show_favorite_tab'] as bool? ?? true,
       autoHideFavoriteTabWhenEmpty: json['auto_hide_favorite_tab_when_empty'] as bool? ?? true,
       showAllTab: json['show_all_tab'] as bool? ?? true,

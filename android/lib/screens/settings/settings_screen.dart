@@ -19,6 +19,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // Expansion States
   bool _playbackExpanded = true;
+  bool _contentTabsExpanded = true;
   bool _syncExpanded = false;
   bool _updateExpanded = false;
 
@@ -126,7 +127,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
 
-    if (confirm != true) return;
+    if (confirm != true || !mounted) return;
 
     setState(() => _isClearingCache = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -382,6 +383,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         currentValue: _selectedAspectRatio,
                         options: _aspectRatios,
                         onSelected: (val) => setState(() => _selectedAspectRatio = val),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // ─── Group: Content & Tabs ───
+                  _buildExpandableGroupCard(
+                    icon: Icons.view_carousel_outlined,
+                    iconColor: const Color(0xFFA78BFA),
+                    title: 'Content & Tabs',
+                    description: 'Channel category tabs and screen display preferences',
+                    isExpanded: _contentTabsExpanded,
+                    onToggleExpand: () => setState(() => _contentTabsExpanded = !_contentTabsExpanded),
+                    children: [
+                      _buildNestedToggleTile(
+                        title: 'Show Trending Category Tab',
+                        description: 'Display the top 20 trending channels tab in Channels page',
+                        value: ref.watch(showTrendingTabProvider),
+                        onChanged: (val) {
+                          ref.read(showTrendingTabProvider.notifier).toggle(val);
+                        },
                       ),
                     ],
                   ),

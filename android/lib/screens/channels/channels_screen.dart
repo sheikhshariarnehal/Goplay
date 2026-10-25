@@ -70,9 +70,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
   /// captured in a listener closure) so a rebuilt category list can never map a
   /// tab index onto a stale category.
   List<String> _categoryIds = const <String>[
-    'trending',
-    'favorite',
     'all',
+    'favorite',
   ];
 
   /// Active index and residency, shared with the pages without rebuilding this
@@ -81,7 +80,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
   /// `controller.index`.
   final _coordinator = _PageCoordinator();
 
-  final List<String> _recentlyVisited = <String>['trending'];
+  final List<String> _recentlyVisited = <String>['all'];
   final Map<String, ScrollController> _scrollControllers =
       <String, ScrollController>{};
 
@@ -108,6 +107,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
 
     ref.listenManual<AppUiConfig>(
       uiConfigProvider,
+      (previous, next) => _applyCategories(ref.read(activeCategoriesWithCountsProvider).value),
+    );
+
+    ref.listenManual<bool>(
+      showTrendingTabProvider,
       (previous, next) => _applyCategories(ref.read(activeCategoriesWithCountsProvider).value),
     );
 
@@ -148,16 +152,19 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
     final uiConfig = ref.read(uiConfigProvider);
     final tabConfig = uiConfig.channelsTab;
 
+    final hasFavorite = tabConfig.showFavoriteTab &&
+        (!tabConfig.autoHideFavoriteTabWhenEmpty ||
+            ref.read(favoriteChannelIdsProvider).isNotEmpty);
+    final showTrending = ref.read(showTrendingTabProvider);
+    final showAll = tabConfig.showAllTab ||
+        (!hasFavorite && !showTrending && (categories?.isEmpty ?? true));
+
     final ids = <String>[
-      if (tabConfig.showTrendingTab) 'trending',
-      if (tabConfig.showFavoriteTab &&
-          (!tabConfig.autoHideFavoriteTabWhenEmpty ||
-              ref.read(favoriteChannelIdsProvider).isNotEmpty))
-        'favorite',
+      if (showAll) 'all',
+      if (hasFavorite) 'favorite',
+      if (showTrending) 'trending',
       ...?categories?.map((e) => e.$1.id),
-      if (tabConfig.showAllTab) 'all',
     ];
-    if (ids.isEmpty) ids.add('all');
 
     // Keyed on the id list, not its length: two categories swapping in/out in
     // the same sync kept the old controller *and* the old id mapping alive.
@@ -838,29 +845,33 @@ class _CategoryFilterBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final tabConfig = ref.watch(uiConfigProvider).channelsTab;
+    final showTrending = ref.watch(showTrendingTabProvider);
+    final hasFavorite = tabConfig.showFavoriteTab &&
+        (!tabConfig.autoHideFavoriteTabWhenEmpty ||
+            ref.watch(favoriteChannelIdsProvider).isNotEmpty);
+    final showAll = tabConfig.showAllTab ||
+        (!hasFavorite && !showTrending && activeCatsWithCounts.isEmpty);
 
     int tabIndex = 0;
     final tabs = <Widget>[
-      if (tabConfig.showTrendingTab)
+      if (showAll)
         Tab(
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Trending'),
+              const Text('All'),
               if (tabConfig.showTabCounts) ...[
                 const SizedBox(width: 6),
                 _CountBadge(
                   animation: tabController.animation,
                   index: tabIndex++,
-                  count: trendingCount,
+                  count: totalCount,
                 ),
               ],
             ],
           ),
         ),
-      if (tabConfig.showFavoriteTab &&
-          (!tabConfig.autoHideFavoriteTabWhenEmpty ||
-              ref.watch(favoriteChannelIdsProvider).isNotEmpty))
+      if (hasFavorite)
         Tab(
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -872,6 +883,23 @@ class _CategoryFilterBar extends ConsumerWidget {
                   animation: tabController.animation,
                   index: tabIndex++,
                   count: favoriteCount,
+                ),
+              ],
+            ],
+          ),
+        ),
+      if (showTrending)
+        Tab(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Trending'),
+              if (tabConfig.showTabCounts) ...[
+                const SizedBox(width: 6),
+                _CountBadge(
+                  animation: tabController.animation,
+                  index: tabIndex++,
+                  count: trendingCount,
                 ),
               ],
             ],
@@ -893,23 +921,6 @@ class _CategoryFilterBar extends ConsumerWidget {
                   animation: tabController.animation,
                   index: tabIndex++,
                   count: activeCatsWithCounts[i].$2,
-                ),
-              ],
-            ],
-          ),
-        ),
-      if (tabConfig.showAllTab || tabIndex == 0)
-        Tab(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('All'),
-              if (tabConfig.showTabCounts) ...[
-                const SizedBox(width: 6),
-                _CountBadge(
-                  animation: tabController.animation,
-                  index: tabIndex++,
-                  count: totalCount,
                 ),
               ],
             ],
