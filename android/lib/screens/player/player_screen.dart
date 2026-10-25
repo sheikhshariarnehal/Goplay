@@ -191,6 +191,47 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   bool _isResolvingStream = false;
   bool _resolutionFailed = false;
 
+  void _handleServerSelected(int index) {
+    if (_currentChannelServers.isEmpty || index < 0 || index >= _currentChannelServers.length) return;
+    final previousServer = _activeServerIndex < _currentChannelServers.length
+        ? _currentChannelServers[_activeServerIndex]
+        : null;
+    final nextServer = _currentChannelServers[index];
+
+    setState(() => _activeServerIndex = index);
+
+    if (mounted && previousServer != null && previousServer.id != nextServer.id) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.swap_calls_rounded, color: Color(0xFFC8FF00), size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${previousServer.name} unavailable. Switched to ${nextServer.name}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF14141E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Color(0x33C8FF00), width: 0.8),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _selectChannel(String id, List<Channel> allChannels) async {
     final candidate = allChannels.cast<Channel?>().firstWhere(
       (c) => c?.id == id,
@@ -200,7 +241,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       final activeServers = candidate.streamServers
           .where((s) => s.active && s.streamUrl.isNotEmpty && !s.streamUrl.startsWith('pro/') && !s.streamUrl.contains('.txt'))
           .toList();
-      if (activeServers.length > 1) {
+      if (activeServers.isNotEmpty) {
         final streams = activeServers.map((s) => s.toPlayableChannel(
           parentChannelId: candidate.id,
           parentName: candidate.name,
@@ -627,7 +668,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 final activeServers = channel.streamServers
                     .where((s) => s.active && s.streamUrl.isNotEmpty && !s.streamUrl.startsWith('pro/') && !s.streamUrl.contains('.txt'))
                     .toList();
-                if (activeServers.length > 1) {
+                if (activeServers.isNotEmpty) {
                   _currentChannelServers = activeServers.map((s) => s.toPlayableChannel(
                     parentChannelId: channel.id,
                     parentName: channel.name,
@@ -699,9 +740,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                         channel: currentPlayChannel,
                         servers: _currentChannelServers.length > 1 ? _currentChannelServers : null,
                         activeServerIndex: _activeServerIndex,
-                        onServerSelected: (index) {
-                          setState(() => _activeServerIndex = index);
-                        },
+                        onServerSelected: _handleServerSelected,
                         isFullscreen: false,
                         controlsVisible: _controlsVisible,
                         onTap: _onPlayerTap,
@@ -840,9 +879,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                     _ServerBadgesRow(
                                       servers: _currentChannelServers,
                                       activeServerIndex: _activeServerIndex,
-                                      onServerSelected: (index) {
-                                        setState(() => _activeServerIndex = index);
-                                      },
+                                      onServerSelected: _handleServerSelected,
                                     ),
                                   const _SectionLabel(text: 'SWITCH CHANNEL'),
                                   Expanded(
@@ -878,9 +915,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       channel: currentPlayChannel,
                       servers: _currentChannelServers.length > 1 ? _currentChannelServers : null,
                       activeServerIndex: _activeServerIndex,
-                      onServerSelected: (index) {
-                        setState(() => _activeServerIndex = index);
-                      },
+                      onServerSelected: _handleServerSelected,
                       isFullscreen: isFullscreen,
                       controlsVisible: _controlsVisible,
                       onTap: _onPlayerTap,

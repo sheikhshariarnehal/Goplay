@@ -122,6 +122,11 @@ class Channel {
           .toList();
     }
 
+    // If streamUrl is not explicitly in JSON or empty, use the first active stream server
+    final effectiveStreamUrl = parsed.url.isNotEmpty
+        ? parsed.url
+        : (parsedServers.isNotEmpty ? parsedServers.first.streamUrl : '');
+
     return Channel(
       id: json['id'] as String,
       name: rawName.isEmpty ? 'Unknown Channel' : rawName,
@@ -132,7 +137,7 @@ class Channel {
       isLive: json['is_live'] as bool? ?? true,
       isTrending: json['is_trending'] as bool? ?? false,
       quality: (rawQuality == null || rawQuality.isEmpty) ? 'HD' : rawQuality,
-      streamUrl: parsed.url,
+      streamUrl: effectiveStreamUrl,
       headers: combinedHeaders,
       sortOrder: json['sort_order'] as int? ?? 0,
       addedAt: json['added_at'] != null
@@ -168,5 +173,6 @@ class Channel {
         'is_playlist': isPlaylist,
         'link_names': linkNames,
         'has_vpn_detection': hasVpnDetection,
+        'stream_servers': streamServers.map((s) => s.toJson()).toList(),
       };
 }

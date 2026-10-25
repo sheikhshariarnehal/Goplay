@@ -49,6 +49,7 @@ dependencies:
 
   hive: any
   encrypt: ^5.0.3
+  vector_math: ^2.1.4
 dev_dependencies:
   flutter_test:
     sdk: flutter

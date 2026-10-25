@@ -406,6 +406,12 @@ class _PlayZEventCardState extends ConsumerState<PlayZEventCard>
                                                     fontWeight: FontWeight.w600,
                                                     color: GoPlayTheme.primary,
                                                   ),
+                                                  onTimerFinished: () {
+                                                    if (mounted) {
+                                                      _startLiveEffects();
+                                                      setState(() {});
+                                                    }
+                                                  },
                                                 )
                                               else
                                                 Text(

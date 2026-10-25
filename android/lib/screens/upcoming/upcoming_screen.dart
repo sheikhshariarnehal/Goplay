@@ -75,10 +75,14 @@ class _UpcomingScreenState extends ConsumerState<UpcomingScreen>
   }
 
   Future<void> _handleRefresh() async {
-    try {
-      ref.invalidate(eventsProvider);
-      ref.invalidate(eventCategoriesProvider);
-    } catch (_) {}
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        ref.invalidate(eventsProvider);
+        ref.invalidate(eventCategoriesProvider);
+      } catch (_) {}
+    });
   }
 
   Future<void> _handleEventTap(SportEvent event) async {

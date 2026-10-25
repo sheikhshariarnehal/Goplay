@@ -518,21 +518,88 @@ export default function LiveTvStudio({ adminToken, onRefreshStats }: LiveTvStudi
   };
 
   // M3U Batch Import Complete Handler
-  const handleM3uImportComplete = async (importedList: Array<{ name: string; logo: string | null; category: string; stream_url: string }>) => {
+  // M3U Batch Import Complete Handler with Smart Merge & Deduplication
+  const handleM3uImportComplete = async (importedList: Array<{ name: string; logo: string | null; category: string; stream_url: string; tvg_id?: string | null }>) => {
     try {
-      // Chunk insertions in batches of 100
-      const CHUNK_SIZE = 100;
-      for (let i = 0; i < importedList.length; i += CHUNK_SIZE) {
-        const chunk = importedList.slice(i, i + CHUNK_SIZE);
+      // 1. Fetch current channels to build an accurate lookup index
+      const { data: existingChannels, error: chFetchErr } = await supabase
+        .from('channels')
+        .select('id, name, logo, category, stream_url');
+      if (chFetchErr) throw chFetchErr;
 
-        const channelRows = chunk.map((item, idx) => {
-          const slug = (item.name + '-' + Math.random().toString(36).substring(2, 7))
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '');
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-          return {
-            id: slug,
+      // Create lookup maps by normalized name and id
+      const channelByNormalizedName = new Map<string, any>();
+      const channelById = new Map<string, any>();
+
+      (existingChannels || []).forEach(ch => {
+        channelById.set(ch.id.toLowerCase(), ch);
+        channelByNormalizedName.set(normalize(ch.name), ch);
+      });
+
+      let updatedCount = 0;
+      let createdCount = 0;
+
+      for (const item of importedList) {
+        const normName = normalize(item.name);
+        const slug = item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const tvgIdKey = item.tvg_id ? item.tvg_id.toLowerCase().trim() : null;
+
+        // Check if channel already exists
+        let matchedChannel = tvgIdKey ? channelById.get(tvgIdKey) : null;
+        if (!matchedChannel) {
+          matchedChannel = channelByNormalizedName.get(normName) || channelById.get(slug);
+        }
+
+        if (matchedChannel) {
+          // Channel already exists: update logo if previously missing
+          if (!matchedChannel.logo && item.logo) {
+            await supabase.from('channels').update({ logo: item.logo }).eq('id', matchedChannel.id);
+          }
+
+          // Check if Server 1 already exists for this channel in stream_servers
+          const { data: existingServer } = await supabase
+            .from('stream_servers')
+            .select('id')
+            .eq('channel_id', matchedChannel.id)
+            .eq('name', 'Server 1 (Primary)')
+            .maybeSingle();
+
+          if (existingServer) {
+            // Update Server 1 while leaving Server 2, 3, etc. completely intact!
+            await supabase
+              .from('stream_servers')
+              .update({
+                stream_url: item.stream_url,
+                scheme: item.stream_url.includes('.mpd') ? 1 : 0,
+                active: true,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existingServer.id);
+          } else {
+            // Insert Server 1 if not present
+            await supabase.from('stream_servers').insert({
+              channel_id: matchedChannel.id,
+              name: 'Server 1 (Primary)',
+              stream_url: item.stream_url,
+              scheme: item.stream_url.includes('.mpd') ? 1 : 0,
+              sort_order: 0,
+              active: true
+            });
+          }
+
+          // Mirror update to channels.stream_url for legacy APK compatibility
+          await supabase.from('channels').update({ stream_url: item.stream_url }).eq('id', matchedChannel.id);
+          updatedCount++;
+        } else {
+          // Channel does not exist: create new channel with deterministic ID
+          const channelId = tvgIdKey && !channelById.has(tvgIdKey) 
+            ? tvgIdKey 
+            : (channelById.has(slug) ? `${slug}-${Date.now().toString().slice(-4)}` : slug);
+
+          const newChannel = {
+            id: channelId,
             name: item.name,
             logo: item.logo,
             category: item.category,
@@ -541,29 +608,32 @@ export default function LiveTvStudio({ adminToken, onRefreshStats }: LiveTvStudi
             proxy: false,
             is_live: true,
             is_trending: false,
-            sort_order: i + idx,
+            sort_order: (existingChannels?.length || 0) + createdCount,
             link_names: ['Server 1 (Primary)'],
           };
-        });
 
-        const { error: chErr } = await supabase.from('channels').insert(channelRows);
-        if (chErr) throw chErr;
+          const { error: insChErr } = await supabase.from('channels').insert(newChannel);
+          if (insChErr) throw insChErr;
 
-        // Also create stream_servers
-        const serverRows = channelRows.map((ch) => ({
-          channel_id: ch.id,
-          name: 'Server 1 (Primary)',
-          stream_url: ch.stream_url,
-          scheme: 0,
-          sort_order: 0,
-          active: true,
-        }));
+          // Insert Server 1 (Primary)
+          await supabase.from('stream_servers').insert({
+            channel_id: channelId,
+            name: 'Server 1 (Primary)',
+            stream_url: item.stream_url,
+            scheme: item.stream_url.includes('.mpd') ? 1 : 0,
+            sort_order: 0,
+            active: true
+          });
 
-        await supabase.from('stream_servers').insert(serverRows);
+          // Register in local maps to prevent internal collisions within the same M3U batch
+          channelById.set(channelId.toLowerCase(), newChannel);
+          channelByNormalizedName.set(normName, newChannel);
+          createdCount++;
+        }
       }
 
       await bumpChannelsVersion();
-      showNotification('success', `Successfully imported ${importedList.length} channels!`);
+      showNotification('success', `M3U Sync complete: ${createdCount} created, ${updatedCount} updated (alternate servers preserved)!`);
       await loadData(true);
       onRefreshStats?.();
     } catch (err: any) {

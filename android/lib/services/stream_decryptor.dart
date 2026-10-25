@@ -21,7 +21,8 @@ class StreamDecryptor {
   static const String _plain =
       'aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ';
   static const String _cipher =
-      'fFgGjJkKaApPbBmMzZeEnNcCdDrRqQtTvVuUxXhHiIwWyYlLsS';
+      'fFgGjJkKaApPbBmMoOzZeEnNcCdDrRqQtTvVuUxXhHiIwWyYlLsS';
+
 
   static final List<int> _decryptMap = List<int>.generate(128, (i) => i);
   static bool _initialized = false;
@@ -333,9 +334,11 @@ class StreamDecryptor {
   /// - Compares raw payload before decryption: identical data returns cached events in 0ms.
   static Future<List<SportEvent>> fetchLiveEvents({
     String? customBaseUrl,
+    bool forceRefresh = false,
   }) async {
     final baseUrl = customBaseUrl ?? baseProUrl;
-    final url = '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/events.txt';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final url = '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/events.txt?_t=$timestamp';
 
     try {
       final dio = Dio(BaseOptions(
@@ -344,30 +347,36 @@ class StreamDecryptor {
         headers: {
           'User-Agent':
               'Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
         },
       ));
 
       final response = await dio.get<String>(url);
       final raw = response.data?.trim() ?? '';
-      if (raw.isEmpty) return _cachedLiveEvents;
+      if (raw.isEmpty) return List<SportEvent>.from(_cachedLiveEvents);
 
-      // 1. Fast zero-cost return if backend payload hasn't changed (saves 100% CPU on unchanged polls)
-      if (raw == _lastRawEventsData && _cachedLiveEvents.isNotEmpty) {
-        return _cachedLiveEvents;
+      // 1. Fast zero-cost return if backend payload hasn't changed (saves CPU on unchanged polls)
+      // Returns a fresh list shallow-copy so Riverpod detects state update when invalidated
+      if (!forceRefresh && raw == _lastRawEventsData && _cachedLiveEvents.isNotEmpty) {
+        return List<SportEvent>.from(_cachedLiveEvents);
       }
 
-      // 2. Offload heavy crypto + 210 JSON decodes to a background worker isolate
+      // 2. Offload heavy crypto + JSON decodes to background worker isolate
       final parsedEvents = await compute(StreamDecryptor.parseEventsFromRaw, raw);
       if (parsedEvents.isNotEmpty) {
         _lastRawEventsData = raw;
         _cachedLiveEvents = parsedEvents;
       }
 
-      return parsedEvents.isNotEmpty ? parsedEvents : _cachedLiveEvents;
+      return parsedEvents.isNotEmpty
+          ? List<SportEvent>.from(parsedEvents)
+          : List<SportEvent>.from(_cachedLiveEvents);
     } catch (e) {
-      return _cachedLiveEvents;
+      return List<SportEvent>.from(_cachedLiveEvents);
     }
   }
+
 
   /// Fetches event category logos from `https://pabbdyzone.shop/event_cats.txt`.
   /// Returns a map of Category/Sport Name -> Logo URL.

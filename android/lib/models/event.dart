@@ -68,6 +68,8 @@ class SportEvent {
   });
 
   /// Evaluates whether the event has concluded according to UTC/GMT time.
+  /// Matches PlayZ TV wc.d.q logic: only marked ended if an end timestamp has passed
+  /// or backend explicitly marks status as finished/completed/ended.
   bool get isEnded {
     final s = status.trim().toLowerCase();
     if (s == 'finished' || s == 'completed' || s == 'ended') {
@@ -76,9 +78,10 @@ class SportEvent {
     if (endTime != null) {
       return DateTime.now().toUtc().isAfter(endTime!.toUtc());
     }
-    // Fallback: If no endTime provided, sport events expire 4 hours after kickoff
-    return DateTime.now().toUtc().difference(startTime.toUtc()) > const Duration(hours: 4);
+    // PlayZ TV wc.d.q: if (endDateStr.isNullOrEmpty() || endTimeStr.isNullOrEmpty()) return false;
+    return false;
   }
+
 
   /// Evaluates whether the event is currently active and live in UTC/GMT.
   bool get isLive {

@@ -14,6 +14,9 @@ class StreamServer {
   final bool hasVpnDetection;
   final int sortOrder;
   final bool active;
+  final String? healthStatus;
+  final int? latencyMs;
+  final DateTime? lastCheckedAt;
 
   const StreamServer({
     required this.id,
@@ -27,6 +30,9 @@ class StreamServer {
     this.hasVpnDetection = false,
     this.sortOrder = 0,
     this.active = true,
+    this.healthStatus,
+    this.latencyMs,
+    this.lastCheckedAt,
   });
 
   factory StreamServer.fromJson(Map<String, dynamic> json) {
@@ -51,6 +57,11 @@ class StreamServer {
       hasVpnDetection: json['has_vpn_detection'] as bool? ?? false,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
       active: json['active'] as bool? ?? true,
+      healthStatus: json['health_status'] as String?,
+      latencyMs: (json['latency_ms'] as num?)?.toInt(),
+      lastCheckedAt: json['last_checked_at'] != null
+          ? DateTime.tryParse(json['last_checked_at'] as String)
+          : null,
     );
   }
 
@@ -67,6 +78,9 @@ class StreamServer {
       'has_vpn_detection': hasVpnDetection,
       'sort_order': sortOrder,
       'active': active,
+      'health_status': healthStatus,
+      'latency_ms': latencyMs,
+      'last_checked_at': lastCheckedAt?.toIso8601String(),
     };
   }
 

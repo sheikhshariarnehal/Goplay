@@ -23,6 +23,7 @@ interface M3uImportModalProps {
       logo: string | null;
       category: string;
       stream_url: string;
+      tvg_id?: string | null;
     }>
   ) => Promise<void>;
 }
@@ -161,6 +162,7 @@ export default function M3uImportModal({
         logo: ch.logo || null,
         category: selectedCategory,
         stream_url: ch.streamUrl,
+        tvg_id: ch.tvgId || null,
       }));
 
       await onImportComplete(payload);

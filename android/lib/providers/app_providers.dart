@@ -162,7 +162,15 @@ final eventsProvider = FutureProvider<List<SportEvent>>((ref) async {
   return cache.getLocalEvents();
 });
 
+// ─── Real-Time Clock Ticker (Drives 0ms Lifecycle Transitions) ──
+/// Emits a tick every 5 seconds to transition fixtures (Upcoming -> Live -> Ended)
+/// dynamically without waiting for network polling or screen rebuilds.
+final eventClockTickerProvider = StreamProvider<DateTime>((ref) {
+  return Stream.periodic(const Duration(seconds: 5), (_) => DateTime.now().toUtc());
+});
+
 final liveEventsProvider = FutureProvider<List<SportEvent>>((ref) async {
+  ref.watch(eventClockTickerProvider);
   final events = await ref.watch(eventsProvider.future);
   final list = events.where((e) {
     if (!e.isLive || e.isEnded) return false;
@@ -187,6 +195,7 @@ final liveEventsProvider = FutureProvider<List<SportEvent>>((ref) async {
 });
 
 final upcomingEventsProvider = FutureProvider<List<SportEvent>>((ref) async {
+  ref.watch(eventClockTickerProvider);
   final events = await ref.watch(eventsProvider.future);
   final list = events.where((e) => e.isUpcoming && !e.isEnded).toList();
   list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
@@ -194,6 +203,7 @@ final upcomingEventsProvider = FutureProvider<List<SportEvent>>((ref) async {
 });
 
 final featuredEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
+  ref.watch(eventClockTickerProvider);
   final eventsState = ref.watch(eventsProvider);
   return eventsState.whenData(
     (events) => events.where((e) => e.isFeatured && !e.isEnded).toList(),
@@ -201,6 +211,7 @@ final featuredEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
 });
 
 final todayEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
+  ref.watch(eventClockTickerProvider);
   final eventsState = ref.watch(eventsProvider);
   return eventsState.whenData((events) {
     final list = events.where((e) {
@@ -222,6 +233,7 @@ final todayEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
 });
 
 final tomorrowEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
+  ref.watch(eventClockTickerProvider);
   final eventsState = ref.watch(eventsProvider);
   return eventsState.whenData((events) {
     final list = events
@@ -233,6 +245,7 @@ final tomorrowEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
 });
 
 final endedEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
+  ref.watch(eventClockTickerProvider);
   final eventsState = ref.watch(eventsProvider);
   return eventsState.whenData((events) {
     final list = events.where((e) => e.isEnded).toList();
@@ -240,6 +253,7 @@ final endedEventsProvider = Provider<AsyncValue<List<SportEvent>>>((ref) {
     return list;
   });
 });
+
 
 // ─── Sorted Sport Categories (cached, not recomputed on chip tap) ─────
 const List<String> _popularSportsPriority = [

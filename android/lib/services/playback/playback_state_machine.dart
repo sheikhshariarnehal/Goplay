@@ -319,7 +319,17 @@ class PlaybackStateMachine extends ChangeNotifier {
   }
 
   void _initiateSkip(ClassifiedError error) {
-    // Check if there's a valid next channel
+    _retryManager.reset();
+    _bufferMonitor.reset();
+
+    // Priority 1: Multi-server failover via onSkipRequest
+    if (onSkipRequest != null) {
+      debugPrint('StateMachine: triggering onSkipRequest callback (multi-server failover / skip)');
+      onSkipRequest?.call();
+      return;
+    }
+
+    // Priority 2: Check if there's a valid next channel
     final nextChannelId = _autoSkipManager.selectNextChannel(
       currentChannelId: _currentChannel?.id ?? '',
       relatedChannels: _relatedChannels,
@@ -327,13 +337,6 @@ class PlaybackStateMachine extends ChangeNotifier {
     );
 
     if (nextChannelId == null) {
-      if (onSkipRequest != null) {
-        debugPrint('StateMachine: triggering onSkipRequest callback (immediate skip)');
-        _retryManager.reset();
-        _bufferMonitor.reset();
-        onSkipRequest?.call();
-        return;
-      }
       // No valid channels — show error
       debugPrint('StateMachine: no valid channels to skip to');
       _transition(PlaybackPhase.failed, error: error);
@@ -341,8 +344,6 @@ class PlaybackStateMachine extends ChangeNotifier {
     }
 
     debugPrint('StateMachine: initiating immediate skip → $nextChannelId');
-    _retryManager.reset();
-    _bufferMonitor.reset();
 
     _telemetry?.recordSkip(
       channelId: _currentChannel?.id ?? '',

@@ -656,8 +656,69 @@ export async function scanChannel(channel: ChannelDbRow): Promise<ScanResult> {
   };
 }
 
+export interface StreamServerDbRow {
+  id: string;
+  channel_id: string;
+  name: string;
+  stream_url: string;
+  scheme?: number;
+  headers?: Record<string, string>;
+  drm?: any;
+  sort_order: number;
+  active: boolean;
+  consecutive_failures?: number;
+  health_status?: string;
+  latency_ms?: number;
+  last_checked_at?: string;
+}
+
+export async function scanStreamServer(server: StreamServerDbRow): Promise<{
+  server: StreamServerDbRow;
+  result: ScanResult;
+  health_status: 'working' | 'slow' | 'offline';
+  consecutive_failures: number;
+  new_active: boolean;
+  status_changed: boolean;
+}> {
+  const channelRow: ChannelDbRow = {
+    id: server.channel_id,
+    name: server.name,
+    stream_url: server.stream_url,
+    headers: server.headers,
+    drm: server.drm,
+  };
+
+  const result = await scanChannel(channelRow);
+  const isHealthy = result.status === 'working' || result.status === 'slow';
+
+  let consecutiveFailures = server.consecutive_failures || 0;
+  let newActive = server.active;
+
+  if (isHealthy) {
+    consecutiveFailures = 0;
+    newActive = true; // Auto-reactivate when stream recovers
+  } else {
+    consecutiveFailures += 1;
+    // Smart auto-deactivation after 2 consecutive failures
+    if (consecutiveFailures >= 2) {
+      newActive = false;
+    }
+  }
+
+  const statusChanged = (server.active !== newActive) || (server.health_status !== result.status);
+
+  return {
+    server,
+    result,
+    health_status: result.status as 'working' | 'slow' | 'offline',
+    consecutive_failures: consecutiveFailures,
+    new_active: newActive,
+    status_changed: statusChanged,
+  };
+}
+
 /**
- * Triggers and performs the scan for all channels
+ * Triggers and performs the health scan for all stream_servers and channels
  */
 export async function runChannelScan(): Promise<{
   success: boolean;
@@ -678,107 +739,128 @@ export async function runChannelScan(): Promise<{
   const supabaseAdmin = createAdminSupabaseClient(correctToken);
 
   try {
-    console.log('Starting full channel health monitoring scan...');
+    console.log('Starting stream_servers and channel health monitoring scan...');
 
-    // Fetch all active channels using pagination (bypass 1000-row PostgREST limit)
+    // 1. Fetch stream_servers using pagination
     const BATCH_SIZE = 1000;
     let offset = 0;
-    const channels: any[] = [];
+    const streamServers: StreamServerDbRow[] = [];
 
     while (true) {
-      const { data: batch, error: chErr } = await supabaseAdmin
-        .from('channels')
+      const { data: batch, error: srvErr } = await supabaseAdmin
+        .from('stream_servers')
         .select('*')
+        .order('channel_id', { ascending: true })
         .order('sort_order', { ascending: true })
         .range(offset, offset + BATCH_SIZE - 1);
 
-      if (chErr) throw chErr;
+      if (srvErr) throw srvErr;
       if (!batch || batch.length === 0) break;
-      channels.push(...batch);
+      streamServers.push(...batch);
 
       if (batch.length < BATCH_SIZE) break;
       offset += BATCH_SIZE;
     }
 
-    if (channels.length === 0) {
-      console.log('No channels found to scan.');
-      global.isScanningNow = false;
-      return { success: true, total: 0, working: 0, offline: 0, slow: 0, durationMs: 0 };
-    }
-
-    console.log(`Scanning ${channels.length} channels with concurrency limit 15...`);
-
-    // Create tasks
-    const tasks = channels.map(ch => () => scanChannel(ch));
-    
-    // Run concurrency-limited scans
-    const results = await runWithConcurrency(tasks, 15);
-
     let workingCount = 0;
     let offlineCount = 0;
     let slowCount = 0;
+    let anyActiveChanged = false;
 
-    // Save each channel results to database (channel_health and channel_health_history)
-    for (const result of results) {
-      if (!result) continue;
+    if (streamServers.length > 0) {
+      console.log(`Scanning ${streamServers.length} stream servers with concurrency limit 15...`);
 
-      if (result.status === 'working') workingCount++;
-      else if (result.status === 'offline') offlineCount++;
-      else if (result.status === 'slow') slowCount++;
+      const tasks = streamServers.map(srv => () => scanStreamServer(srv));
+      const results = await runWithConcurrency(tasks, 15);
 
-      // 1. Update/Insert in channel_health
-      const { error: upsertErr } = await supabaseAdmin
-        .from('channel_health')
-        .upsert({
-          channel_id: result.channel_id,
-          status: result.status,
-          http_status: result.http_status,
-          response_time: result.response_time,
-          playlist_status: result.playlist_status,
-          segment_status: result.segment_status,
-          proxy_status: result.proxy_status,
-          drm_status: result.drm_status,
-          headers_status: result.headers_status,
-          geo_status: result.geo_status,
-          error_message: result.error_message,
-          checked_at: result.checked_at,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'channel_id' });
+      for (const item of results) {
+        if (!item) continue;
+        const { server, result, health_status, consecutive_failures, new_active, status_changed } = item;
 
-      if (upsertErr) {
-        console.error(`Failed to upsert channel health for ${result.channel_id}:`, upsertErr);
+        if (health_status === 'working') workingCount++;
+        else if (health_status === 'offline') offlineCount++;
+        else if (health_status === 'slow') slowCount++;
+
+        if (server.active !== new_active) {
+          anyActiveChanged = true;
+        }
+
+        // Update stream_servers record
+        const { error: srvUpErr } = await supabaseAdmin
+          .from('stream_servers')
+          .update({
+            health_status,
+            latency_ms: result.response_time,
+            consecutive_failures,
+            active: new_active,
+            last_checked_at: result.checked_at,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', server.id);
+
+        if (srvUpErr) {
+          console.error(`Failed to update stream_server ${server.id}:`, srvUpErr);
+        }
+
+        // Upsert into channel_health for dashboard display
+        await supabaseAdmin
+          .from('channel_health')
+          .upsert({
+            channel_id: server.channel_id,
+            status: health_status,
+            http_status: result.http_status,
+            response_time: result.response_time,
+            playlist_status: result.playlist_status,
+            segment_status: result.segment_status,
+            proxy_status: result.proxy_status,
+            drm_status: result.drm_status,
+            headers_status: result.headers_status,
+            geo_status: result.geo_status,
+            error_message: result.error_message,
+            checked_at: result.checked_at,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'channel_id' });
+
+        // Record history log
+        await supabaseAdmin
+          .from('channel_health_history')
+          .insert({
+            channel_id: server.channel_id,
+            status: health_status,
+            http_status: result.http_status,
+            response_time: result.response_time,
+            playlist_status: result.playlist_status,
+            segment_status: result.segment_status,
+            proxy_status: result.proxy_status,
+            drm_status: result.drm_status,
+            headers_status: result.headers_status,
+            geo_status: result.geo_status,
+            error_message: result.error_message,
+            checked_at: result.checked_at
+          });
       }
-
-      // 2. Insert into channel_health_history
-      const { error: histErr } = await supabaseAdmin
-        .from('channel_health_history')
-        .insert({
-          channel_id: result.channel_id,
-          status: result.status,
-          http_status: result.http_status,
-          response_time: result.response_time,
-          playlist_status: result.playlist_status,
-          segment_status: result.segment_status,
-          proxy_status: result.proxy_status,
-          drm_status: result.drm_status,
-          headers_status: result.headers_status,
-          geo_status: result.geo_status,
-          error_message: result.error_message,
-          checked_at: result.checked_at
-        });
-
-      if (histErr) {
-        console.error(`Failed to insert history log for ${result.channel_id}:`, histErr);
+    } else {
+      // Fallback: Scan legacy channels table directly if stream_servers is empty
+      const { data: channels } = await supabaseAdmin.from('channels').select('*').limit(500);
+      if (channels && channels.length > 0) {
+        const tasks = channels.map(ch => () => scanChannel(ch));
+        const results = await runWithConcurrency(tasks, 15);
+        for (const res of results) {
+          if (!res) continue;
+          if (res.status === 'working') workingCount++;
+          else if (res.status === 'offline') offlineCount++;
+          else if (res.status === 'slow') slowCount++;
+        }
       }
     }
 
     const durationMs = Date.now() - startTime;
 
-    // 3. Save to scan history (channel_health_scans)
-    const { error: scanHistErr } = await supabaseAdmin
+    // 2. Save scan aggregate statistics
+    await supabaseAdmin
       .from('channel_health_scans')
       .insert({
-        total_channels: channels.length,
+        total_channels: streamServers.length,
         working_count: workingCount,
         offline_count: offlineCount,
         slow_count: slowCount,
@@ -786,29 +868,41 @@ export async function runChannelScan(): Promise<{
         scanned_at: new Date().toISOString()
       });
 
-    if (scanHistErr) {
-      console.error('Failed to log scan statistics history:', scanHistErr);
+    // 3. If any stream server was deactivated/reactivated, bump channels_version so client apps sync
+    if (anyActiveChanged) {
+      console.log('Stream server active statuses changed. Bumping channels_version...');
+      try {
+        const { data: currentSettings } = await supabaseAdmin
+          .from('app_settings')
+          .select('channels_version')
+          .limit(1)
+          .maybeSingle();
+
+        const nextVersion = (currentSettings?.channels_version || Date.now()) + 1;
+        await supabaseAdmin
+          .from('app_settings')
+          .update({ channels_version: nextVersion, updated_at: new Date().toISOString() })
+          .not('channels_version', 'is', null);
+      } catch (bumpErr) {
+        console.warn('Failed to bump channels_version after scan:', bumpErr);
+      }
     }
 
     // 4. Log rotation - clean up records older than 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const { error: deleteErr } = await supabaseAdmin
+    await supabaseAdmin
       .from('channel_health_history')
       .delete()
       .lt('created_at', sevenDaysAgo.toISOString());
 
-    if (deleteErr) {
-      console.error('Failed to prune old health history logs:', deleteErr);
-    }
-
-    console.log(`Health scan completed in ${durationMs}ms. Working: ${workingCount}, Offline: ${offlineCount}, Slow: ${slowCount}`);
+    console.log(`Stream scan completed in ${durationMs}ms. Working: ${workingCount}, Offline: ${offlineCount}, Slow: ${slowCount}`);
 
     global.lastScanTime = new Date().toISOString();
     global.isScanningNow = false;
     return {
       success: true,
-      total: channels.length,
+      total: streamServers.length,
       working: workingCount,
       offline: offlineCount,
       slow: slowCount,
