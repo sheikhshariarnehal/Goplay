@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/channel.dart';
 import '../models/event.dart';
@@ -54,7 +55,23 @@ class SupabaseService {
     return allChannels;
   }
 
-  Future<List<Channel>> getTrendingChannels() async {
+  Future<List<Channel>> getTrendingChannels({int limit = 20}) async {
+    // 1. Try real-time RPC for dynamic trending (Admin pins + 24-48h top plays)
+    try {
+      final response = await _client.rpc(
+        'get_trending_channels',
+        params: {'p_limit': limit},
+      );
+      if (response is List && response.isNotEmpty) {
+        return response
+            .map((e) => Channel.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('Supabase get_trending_channels RPC failed: $e, falling back to static query');
+    }
+
+    // 2. Fallback to static pinned query
     const int batchSize = 1000;
     int offset = 0;
     final List<Channel> allChannels = [];

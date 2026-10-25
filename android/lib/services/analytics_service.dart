@@ -21,6 +21,7 @@ class AnalyticsService with WidgetsBindingObserver {
   String? _currentChannelName;
 
   Timer? _heartbeatTimer;
+  Timer? _playbackVerificationTimer;
   bool _isInitialized = false;
 
   AnalyticsService();
@@ -102,6 +103,7 @@ class AnalyticsService with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _heartbeatTimer?.cancel();
+    _playbackVerificationTimer?.cancel();
   }
 
   // ─── Telemetry Hooks ────────────────────────────────────────
@@ -112,14 +114,38 @@ class AnalyticsService with WidgetsBindingObserver {
     _currentChannelId = channelId;
     _currentChannelName = channelName;
     _triggerImmediateHeartbeat();
+
+    // Verified Playback Threshold: count after 4 seconds of uninterrupted watching
+    _playbackVerificationTimer?.cancel();
+    _playbackVerificationTimer = Timer(const Duration(seconds: 4), () {
+      _recordVerifiedPlayback(channelId);
+    });
   }
 
   /// Call when user stops watching (closes player).
   void stopWatching() {
+    _playbackVerificationTimer?.cancel();
+    _playbackVerificationTimer = null;
     _status = 'online';
     _currentChannelId = null;
     _currentChannelName = null;
     _triggerImmediateHeartbeat();
+  }
+
+  /// Record verified playback event to Supabase for dynamic trending
+  Future<void> _recordVerifiedPlayback(String channelId) async {
+    if (_deviceId == null || channelId.isEmpty) return;
+
+    try {
+      final client = Supabase.instance.client;
+      await client.rpc('record_channel_playback', params: {
+        'p_channel_id': channelId,
+        'p_device_id': _deviceId,
+      });
+      debugPrint('Recorded verified playback for dynamic trending: $channelId');
+    } catch (e) {
+      debugPrint('Failed to record channel playback for trending: $e');
+    }
   }
 
   // ─── Lifecycle Observer ─────────────────────────────────────

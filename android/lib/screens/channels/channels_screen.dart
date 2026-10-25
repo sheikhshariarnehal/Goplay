@@ -283,7 +283,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
       if (id == 'all') {
         channels = allChannels;
       } else if (id == 'trending') {
-        channels = allChannels?.where((c) => c.isTrending).toList();
+        channels = ref.read(trendingChannelsProvider).value ??
+            allChannels?.where((c) => c.isTrending).toList();
       } else if (id == 'favorite') {
         final favIds = ref.read(favoriteChannelIdsProvider);
         channels = allChannels?.where((c) => favIds.contains(c.id)).toList();
@@ -447,8 +448,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
                       tabController: controller,
                       activeCatsWithCounts: categories,
                       trendingCount:
-                          (ref.watch(channelsProvider).value ?? const [])
-                              .where((c) => c.isTrending)
+                          (ref.watch(trendingChannelsProvider).value ?? const [])
                               .length,
                       favoriteCount:
                           (ref.watch(channelsProvider).value ?? const [])

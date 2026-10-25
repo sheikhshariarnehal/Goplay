@@ -87,6 +87,18 @@ final channelsProvider = FutureProvider<List<Channel>>((ref) async {
 
 final trendingChannelsProvider = FutureProvider<List<Channel>>((ref) async {
   final channels = await ref.watch(channelsProvider.future);
+  final supabase = ref.watch(supabaseServiceProvider);
+
+  try {
+    final trending = await supabase.getTrendingChannels(limit: 20);
+    if (trending.isNotEmpty) {
+      final channelMap = {for (final ch in channels) ch.id: ch};
+      return trending.map((t) => channelMap[t.id] ?? t).toList();
+    }
+  } catch (e) {
+    debugPrint('Error loading dynamic trending channels: $e');
+  }
+
   return channels.where((ch) => ch.isTrending).toList();
 });
 
@@ -118,9 +130,7 @@ const String _uncategorizedKey = 'uncategorized';
 final channelsByCategoryProvider = Provider.autoDispose
     .family<AsyncValue<List<Channel>>, String>((ref, categoryId) {
   if (categoryId == 'trending') {
-    return ref.watch(channelsProvider).whenData(
-          (channels) => channels.where((c) => c.isTrending).toList(),
-        );
+    return ref.watch(trendingChannelsProvider);
   }
   if (categoryId == 'favorite') {
     return ref.watch(favoriteChannelsProvider);
