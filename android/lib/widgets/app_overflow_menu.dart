@@ -2,45 +2,45 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../core/theme.dart';
+import '../core/typography.dart';
 import '../providers/app_providers.dart';
 import 'tv_focus_wrapper.dart';
 
-/// Industry-grade 3-dot action menu with sleek bottom sheet design matching bottom nav bar.
+/// Telegram-style sleek top-right popup dropdown menu.
 class AppOverflowMenu extends ConsumerWidget {
   final Color? iconColor;
 
   const AppOverflowMenu({super.key, this.iconColor});
 
-  void _showActionSheet(BuildContext context, WidgetRef ref) {
+  void _showDropdown(BuildContext context, WidgetRef ref) {
     HapticFeedback.lightImpact();
 
-    final favoriteCount = ref.read(favoriteChannelIdsProvider).length;
+    // Resolve target button's global position on screen
+    final renderBox = context.findRenderObject() as RenderBox?;
+    final buttonRect = renderBox != null
+        ? renderBox.localToGlobal(Offset.zero) & renderBox.size
+        : Rect.fromLTWH(MediaQuery.of(context).size.width - 48, 48, 38, 38);
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => _OverflowActionSheet(
-        favoriteCount: favoriteCount,
-        onFavoritesSelected: () {
-          Navigator.of(ctx).pop();
-          ref.read(selectedCategoryProvider.notifier).select('favorite');
-          context.go('/channels');
-        },
-        onSettingsSelected: () {
-          Navigator.of(ctx).pop();
-          context.push('/settings');
-        },
-        onAboutSelected: () {
-          Navigator.of(ctx).pop();
-          showAboutDialog(
-            context: context,
-            applicationName: 'GoPlay Stream',
-            applicationVersion: 'v2.1.0 (Build 210)',
-            applicationLegalese: '© 2026 GoPlay Streaming Platform. All rights reserved.',
-          );
-        },
+    Navigator.of(context).push(
+      _TelegramMenuRoute(
+        targetRect: buttonRect,
+        child: _TelegramDropdownCard(
+          onFavoritesSelected: () {
+            ref.read(selectedCategoryProvider.notifier).select('favorite');
+            context.go('/channels');
+          },
+          onSettingsSelected: () {
+            context.push('/settings');
+          },
+          onAboutSelected: () {
+            showAboutDialog(
+              context: context,
+              applicationName: 'GoPlay Stream',
+              applicationVersion: 'v2.1.0 (Build 210)',
+              applicationLegalese: '© 2026 GoPlay Streaming Platform. All rights reserved.',
+            );
+          },
+        ),
       ),
     );
   }
@@ -51,7 +51,7 @@ class AppOverflowMenu extends ConsumerWidget {
     final color = iconColor ?? cs.onSurface.withValues(alpha: 0.85);
 
     return TvFocusable(
-      onTap: () => _showActionSheet(context, ref),
+      onTap: () => _showDropdown(context, ref),
       borderRadius: BorderRadius.circular(20),
       child: Container(
         width: 38,
@@ -67,14 +67,114 @@ class AppOverflowMenu extends ConsumerWidget {
   }
 }
 
-class _OverflowActionSheet extends StatelessWidget {
-  final int favoriteCount;
+/// Custom PopupRoute for Telegram-style scale/fade animation and clear backdrop.
+class _TelegramMenuRoute extends PopupRoute<void> {
+  final Rect targetRect;
+  final Widget child;
+
+  _TelegramMenuRoute({
+    required this.targetRect,
+    required this.child,
+  });
+
+  @override
+  Color? get barrierColor => Colors.transparent;
+
+  @override
+  bool get barrierDismissible => true;
+
+  @override
+  String? get barrierLabel => 'Dismiss Menu';
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 200);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 160);
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    return CustomSingleChildLayout(
+      delegate: _DropdownPositionDelegate(targetRect: targetRect),
+      child: child,
+    );
+  }
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curvedAnimation = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    return ScaleTransition(
+      alignment: Alignment.topRight,
+      scale: Tween<double>(begin: 0.82, end: 1.0).animate(curvedAnimation),
+      child: FadeTransition(
+        opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curvedAnimation),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Position delegate anchoring the dropdown directly below the 3-dot icon.
+class _DropdownPositionDelegate extends SingleChildLayoutDelegate {
+  final Rect targetRect;
+
+  _DropdownPositionDelegate({required this.targetRect});
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    return constraints.loosen();
+  }
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    const double rightMargin = 12.0;
+    const double verticalGap = 6.0;
+
+    // Align dropdown right edge with the button, bounded by right screen margin
+    double x = targetRect.right - childSize.width + 4;
+    if (x + childSize.width > size.width - rightMargin) {
+      x = size.width - childSize.width - rightMargin;
+    }
+    if (x < 12.0) {
+      x = 12.0;
+    }
+
+    // Place directly beneath button; if it exceeds bottom of screen, flip above
+    double y = targetRect.bottom + verticalGap;
+    if (y + childSize.height > size.height - 20) {
+      y = targetRect.top - childSize.height - verticalGap;
+    }
+
+    return Offset(x, y);
+  }
+
+  @override
+  bool shouldRelayout(_DropdownPositionDelegate oldDelegate) {
+    return targetRect != oldDelegate.targetRect;
+  }
+}
+
+/// Floating dark dropdown card matching Telegram's sleek popup aesthetics.
+class _TelegramDropdownCard extends StatelessWidget {
   final VoidCallback onFavoritesSelected;
   final VoidCallback onSettingsSelected;
   final VoidCallback onAboutSelected;
 
-  const _OverflowActionSheet({
-    required this.favoriteCount,
+  const _TelegramDropdownCard({
     required this.onFavoritesSelected,
     required this.onSettingsSelected,
     required this.onAboutSelected,
@@ -82,233 +182,142 @@ class _OverflowActionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface, // Dynamically matches app surface background
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Top Drag Handle Indicator
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 14),
-                  decoration: BoxDecoration(
-                    color: const Color(0x40FFFFFF),
-                    borderRadius: BorderRadius.circular(2),
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: 215,
+        decoration: BoxDecoration(
+          color: const Color(0xFF222222), // Telegram-style deep slate dark surface
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 0.7,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.55),
+              blurRadius: 28,
+              spreadRadius: 2,
+              offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.0),
+            child: FocusScope(
+              autofocus: true,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _MenuItemTile(
+                    icon: Icons.bookmark_border_rounded,
+                    title: 'Favorite Channels',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      onFavoritesSelected();
+                    },
                   ),
-                ),
+                  _MenuItemTile(
+                    icon: Icons.settings_outlined,
+                    title: 'App Settings',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      onSettingsSelected();
+                    },
+                  ),
+                  _MenuItemTile(
+                    icon: Icons.info_outline_rounded,
+                    title: 'About GoPlay',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      onAboutSelected();
+                    },
+                  ),
+                ],
               ),
-
-              // Header Branding
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF7A85), Color(0xFFFF5263)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'GP',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'GoPlay Menu',
-                            style: TextStyle(
-                              color: GoPlayTheme.onSurface,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          SizedBox(height: 1),
-                          Text(
-                            'Live IPTV & Sports Stream',
-                            style: TextStyle(
-                              color: GoPlayTheme.onSurfaceVariant,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0x14FFFFFF), width: 0.6),
-                      ),
-                      child: const Text(
-                        'v2.1.0',
-                        style: TextStyle(
-                          color: GoPlayTheme.onSurfaceVariant,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-              const Divider(color: Color(0x14FFFFFF), height: 1),
-              const SizedBox(height: 10),
-
-              // Action Tile 1: Favorites
-              _buildMenuItem(
-                icon: Icons.bookmark_rounded,
-                iconColor: GoPlayTheme.primary,
-                title: 'Favorite Channels',
-                subtitle: 'Quick access to your pinned channels',
-                badgeText: favoriteCount > 0 ? '$favoriteCount' : null,
-                onTap: onFavoritesSelected,
-              ),
-
-              const SizedBox(height: 8),
-
-              // Action Tile 2: Settings
-              _buildMenuItem(
-                icon: Icons.settings_rounded,
-                iconColor: const Color(0xFF60A5FA),
-                title: 'App Settings',
-                subtitle: 'Playback engine, sync schedule & updates',
-                onTap: onSettingsSelected,
-              ),
-
-              const SizedBox(height: 8),
-
-              // Action Tile 3: About
-              _buildMenuItem(
-                icon: Icons.info_outline_rounded,
-                iconColor: const Color(0xFFA78BFA),
-                title: 'About GoPlay',
-                subtitle: 'Version info, open source licenses & legal',
-                onTap: onAboutSelected,
-              ),
-
-              const SizedBox(height: 14),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildMenuItem({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    String? badgeText,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0x14FFFFFF),
-          width: 0.6,
+/// Compact single-line row tile with Telegram touch feedback and Android TV D-Pad focus.
+class _MenuItemTile extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  const _MenuItemTile({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
+  @override
+  State<_MenuItemTile> createState() => _MenuItemTileState();
+}
+
+class _MenuItemTileState extends State<_MenuItemTile> {
+  bool _isFocused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusableActionDetector(
+      onShowFocusHighlight: (focused) => setState(() => _isFocused = focused),
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            HapticFeedback.lightImpact();
+            widget.onTap();
+            return null;
+          },
         ),
-      ),
+      },
       child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        color: _isFocused
+            ? Colors.white.withValues(alpha: 0.12)
+            : Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
           onTap: () {
             HapticFeedback.lightImpact();
-            onTap();
+            widget.onTap();
           },
+          splashColor: Colors.white.withValues(alpha: 0.08),
+          highlightColor: Colors.white.withValues(alpha: 0.05),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, color: iconColor, size: 20),
+                Icon(
+                  widget.icon,
+                  size: 20,
+                  color: _isFocused
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.85),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: GoPlayTheme.onSurface,
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.1,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          color: GoPlayTheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (badgeText != null) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: GoPlayTheme.primary,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      badgeText,
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  child: Text(
+                    widget.title,
+                    style: TextStyle(
+                      fontFamily: GoPlayType.family,
+                      color: _isFocused
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.92),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: -0.1,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                ],
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: GoPlayTheme.onSurfaceVariant,
-                  size: 20,
                 ),
               ],
             ),
